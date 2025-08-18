@@ -34,9 +34,12 @@
     .status{width:100%;margin-top:6px}
   }
 </style>
+<!-- PDF libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="logRoot">
   <h1>Driver Daily Log</h1>
 
   <!-- Driver info -->
@@ -51,8 +54,18 @@
         <input id="driverName" type="text" placeholder="Enter driver name">
       </div>
       <div>
+        <label>Driver Email</label>
+        <input id="driverEmail" type="email" placeholder="name@example.com">
+      </div>
+    </div>
+    <div class="row2" style="margin-top:12px">
+      <div>
         <label>Truck #</label>
         <input id="truckNum" type="text" placeholder="Enter truck #">
+      </div>
+      <div>
+        <label>Dispatcher Email (optional CC)</label>
+        <input id="ccEmail" type="email" placeholder="optional@company.com">
       </div>
     </div>
   </div>
@@ -111,6 +124,7 @@
     <div class="flex" style="margin-top:12px">
       <button class="btn" id="addStop" type="button">+ Add Stop</button>
       <button class="btn secondary" id="exportCsv" type="button">Export CSV</button>
+      <button class="btn" id="submitPdfEmail" type="button" title="Create PDF and email">Submit Day (Email PDF)</button>
       <span class="status" id="saveStatus">Not saved</span>
     </div>
   </div>
@@ -132,11 +146,15 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function(){
-  if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true; // guard against double-init
+document.addEventListener('DOMContentLoaded', async function(){
+  if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
+
+  // === Your Apps Script Web App URL (as requested) ===
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxeGEhnkKh5P_QTl4azHvh2yjnNjrPEVKw-V3GOkcItkhfwhTT3jlQfeYpnOSJuh4Lz/exec';
+  const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
   // ---------- Autosave ----------
-  const STORAGE_KEY = 'driverDailyLog.autosave.v2';
+  const STORAGE_KEY = 'driverDailyLog.autosave.v3';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
@@ -160,6 +178,8 @@ document.addEventListener('DOMContentLoaded', function(){
       header: {
         logDate: logDate.value || '',
         driverName: driverName.value || '',
+        driverEmail: driverEmail.value || '',
+        ccEmail: ccEmail.value || '',
         truckNum: truckNum.value || '',
         startMiles: startMiles.value || '',
         endMiles: endMiles.value || '',
@@ -184,6 +204,8 @@ document.addEventListener('DOMContentLoaded', function(){
       if (data.header){
         logDate.value   = data.header.logDate   || '';
         driverName.value= data.header.driverName|| '';
+        driverEmail.value= data.header.driverEmail|| '';
+        ccEmail.value   = data.header.ccEmail   || '';
         truckNum.value  = data.header.truckNum  || '';
         startMiles.value= data.header.startMiles|| '';
         endMiles.value  = data.header.endMiles  || '';
@@ -217,6 +239,8 @@ document.addEventListener('DOMContentLoaded', function(){
   // ---------- Elements ----------
   const logDate     = document.getElementById('logDate');
   const driverName  = document.getElementById('driverName');
+  const driverEmail = document.getElementById('driverEmail');
+  const ccEmail     = document.getElementById('ccEmail');
   const truckNum    = document.getElementById('truckNum');
   const startMiles  = document.getElementById('startMiles');
   const endMiles    = document.getElementById('endMiles');
@@ -253,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function(){
     calcGrossPay();
     scheduleSave();
   }
-  ;['logDate','driverName','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
+  ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
     .forEach(id=>{
       const el=document.getElementById(id);
       el.addEventListener('input', recalcTripTotals);
@@ -303,8 +327,8 @@ document.addEventListener('DOMContentLoaded', function(){
 
       if(s.type==="Drop & Hook"){ s.value=0.25; }
       else if(s.type==="Pickup"||s.type==="Drop"){
-        s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60); // detention rounded to 15 min in detentionFrom()
-      } else { s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60); } // fallback
+        s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60);
+      } else { s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60); }
 
       val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
       refresh(); scheduleSave();
@@ -330,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function(){
     const valTotal=stops.reduce((acc,s)=>acc+s.value,0);
     tfootDet.textContent=minToHHMM(detTotal);
     tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
-    recalcTripTotals(); // also updates Gross Pay
+    recalcTripTotals();
   }
 
   // Buttons
@@ -338,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   document.getElementById('exportCsv').addEventListener('click',()=>{
     const rows=[];
-    rows.push(["Date",logDate.value,"Driver Name",driverName.value,"Truck #",truckNum.value]);
+    rows.push(["Date",logDate.value,"Driver Name",driverName.value,"Driver Email",driverEmail.value,"Truck #",truckNum.value]);
     rows.push(["Start Miles",startMiles.value,"End Miles",endMiles.value,"Start Time",startTime.value,"End Time",endTime.value]);
     rows.push(["Rate/Mile",rateMile.value,"Hourly Rate",rateHour.value,"Gross Pay",grossPay.value]);
     rows.push(["Total Miles",totalMiles.value,"Total Time",totalTime.value,"Total Detention",totalDetention.value,"Total Value",tfootVal.textContent]);
@@ -357,9 +381,65 @@ document.addEventListener('DOMContentLoaded', function(){
     setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   });
 
+  // ---- Submit Day (PDF → Email via Apps Script) ----
+  async function submitPdfEmail(){
+    const { jsPDF } = window.jspdf;
+    const rootEl = document.getElementById('logRoot');
+
+    // Render the visible app to an image
+    const canvas = await html2canvas(rootEl, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL('image/png');
+
+    // Build a single-page PDF (scaled to fit A4)
+    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const maxW = pageW - 40, maxH = pageH - 40;
+    let w = canvas.width, h = canvas.height, k = Math.min(maxW/w, maxH/h);
+    pdf.addImage(imgData, 'PNG', 20, 20, w*k, h*k);
+
+    // Blob → base64
+    const arrayBuffer = pdf.output('arraybuffer');
+    const blob = new Blob([arrayBuffer], {type:'application/pdf'});
+    const pdfBase64 = await new Promise(res=>{
+      const fr=new FileReader();
+      fr.onload=()=>res(String(fr.result).split(',')[1]);
+      fr.readAsDataURL(blob);
+    });
+
+    const datePart = logDate.value || new Date().toISOString().slice(0,10);
+    const filename = `driver_log_${datePart}.pdf`;
+    const subject  = `Driver Daily Log – ${driverName.value || 'Driver'} – ${datePart}`;
+    const body     = `Driver: ${driverName.value || ''}\nTruck: ${truckNum.value || ''}\nMiles: ${totalMiles.value}\nValue (hrs): ${tfootVal.textContent}\nGross Pay: $${grossPay.value}\n\nAttached is today's Driver Daily Log.`;
+
+    const toEmail = (driverEmail.value || '').trim() || ALWAYS_BCC;  // fall back so something is sent
+    const cc      = (ccEmail.value || '').trim();
+
+    try{
+      const resp = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          filename, pdfBase64,
+          to: toEmail,
+          cc, bcc: ALWAYS_BCC,
+          subject, body
+        })
+      });
+      const json = await resp.json().catch(()=>({}));
+      if (resp.ok && (json.ok || json.sentTo)) {
+        alert('Submitted! PDF emailed successfully.');
+      } else {
+        alert('Could not send email: ' + (json.error || resp.statusText));
+      }
+    }catch(err){
+      alert('Network error sending email: ' + err.message);
+    }
+  }
+  document.getElementById('submitPdfEmail').addEventListener('click', submitPdfEmail);
+
   // Init
   restoreIfAny();
-  // ensure initial totals render even if no stops yet
   recalcTripTotals();
 });
 </script>
