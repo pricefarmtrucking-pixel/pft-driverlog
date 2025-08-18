@@ -42,7 +42,7 @@
 <div class="wrap" id="logRoot">
   <h1>Driver Daily Log</h1>
 
-  <!-- Driver info -->
+  <!-- Driver + day info -->
   <div class="card">
     <div class="row3">
       <div>
@@ -134,7 +134,8 @@
     <table id="stopsTable" style="display:none">
       <thead>
         <tr>
-          <th>#</th><th>Type</th><th>Location</th><th>Arrive</th><th>Depart</th><th>Duration</th><th>Detention</th><th>Value (hrs)</th><th></th>
+          <th>#</th><th>Type</th><th>Location</th><th>Arrive</th><th>Depart</th>
+          <th>Duration</th><th>Detention</th><th>Value (hrs)</th><th></th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -149,154 +150,101 @@
 document.addEventListener('DOMContentLoaded', async function(){
   if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
 
-  // === Your Apps Script Web App URL (as requested) ===
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbyZuCinJRJcryz8THUR2wZweij4Uwo7QNEu4y8hfEqvPG6TOy7LDFIUoWdpPcusW_8G/exec';
+  /* === Apps Script Web App URL === */
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxkspm9qo6dzcdQHjVUSfEya6-URXoXWI_0SU11jONfN_EoAJOikbVNk1aZaRPK0z6g/exec';
   const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
-  // ---------- Autosave ----------
-  const STORAGE_KEY = 'driverDailyLog.autosave.v3';
+  /* ---------- Autosave ---------- */
+  const STORAGE_KEY = 'driverDailyLog.autosave.v4';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
   const nowStamp = () => { const d=new Date(); return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
-
-  function scheduleSave(){
-    saveStatus.textContent = 'Saving…';
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, 350);
-  }
+  function scheduleSave(){ saveStatus.textContent='Saving…'; clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,350); }
   function saveNow(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
-      saveStatus.textContent = `Saved ✓ at ${nowStamp()}`;
-    }catch(e){
-      saveStatus.textContent = 'Save failed (storage full?)';
-    }
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); saveStatus.textContent=`Saved ✓ at ${nowStamp()}`; }
+    catch(e){ saveStatus.textContent='Save failed'; }
   }
   function collectState(){
     return {
-      header: {
-        logDate: logDate.value || '',
-        driverName: driverName.value || '',
-        driverEmail: driverEmail.value || '',
-        ccEmail: ccEmail.value || '',
-        truckNum: truckNum.value || '',
-        startMiles: startMiles.value || '',
-        endMiles: endMiles.value || '',
-        startTime: startTime.value || '',
-        endTime: endTime.value || '',
-        rateMile: rateMile.value || '',
-        rateHour: rateHour.value || ''
+      header:{
+        logDate:logDate.value||'',driverName:driverName.value||'',driverEmail:driverEmail.value||'',
+        ccEmail:ccEmail.value||'',truckNum:truckNum.value||'',startMiles:startMiles.value||'',
+        endMiles:endMiles.value||'',startTime:startTime.value||'',endTime:endTime.value||'',
+        rateMile:rateMile.value||'',rateHour:rateHour.value||''
       },
-      stops: stops.map(s => ({
-        type: s.type,
-        location: s.row.querySelector('.loc').value || '',
-        arr: s.arr || '',
-        dep: s.dep || ''
-      }))
+      stops:stops.map(s=>({type:s.type,location:s.row.querySelector('.loc').value||'',arr:s.arr||'',dep:s.dep||''}))
     };
   }
   function restoreIfAny(){
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return;
+    const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
     try{
-      const data = JSON.parse(raw);
-      if (data.header){
-        logDate.value   = data.header.logDate   || '';
-        driverName.value= data.header.driverName|| '';
-        driverEmail.value= data.header.driverEmail|| '';
-        ccEmail.value   = data.header.ccEmail   || '';
-        truckNum.value  = data.header.truckNum  || '';
-        startMiles.value= data.header.startMiles|| '';
-        endMiles.value  = data.header.endMiles  || '';
-        startTime.value = data.header.startTime || '';
-        endTime.value   = data.header.endTime   || '';
-        rateMile.value  = data.header.rateMile  || '';
-        rateHour.value  = data.header.rateHour  || '';
+      const d=JSON.parse(raw);
+      if(d.header){
+        logDate.value=d.header.logDate||''; driverName.value=d.header.driverName||'';
+        driverEmail.value=d.header.driverEmail||''; ccEmail.value=d.header.ccEmail||'';
+        truckNum.value=d.header.truckNum||''; startMiles.value=d.header.startMiles||'';
+        endMiles.value=d.header.endMiles||''; startTime.value=d.header.startTime||'';
+        endTime.value=d.header.endTime||''; rateMile.value=d.header.rateMile||'';
+        rateHour.value=d.header.rateHour||'';
       }
-      if (Array.isArray(data.stops)){
-        data.stops.forEach(st => {
-          const s = addStop(st.type || 'Pickup');
-          s.row.querySelector('.loc').value = st.location || '';
-          s.row.querySelector('.arr').value = st.arr || '';
-          s.row.querySelector('.dep').value = st.dep || '';
-          s._recalc();
-        });
-      }
-      saveStatus.textContent = `Draft loaded • ${nowStamp()}`;
-    }catch(e){
-      saveStatus.textContent = 'Could not load draft';
-    }
+      (d.stops||[]).forEach(st=>{const s=addStop(st.type||'Pickup'); s.row.querySelector('.loc').value=st.location||''; s.row.querySelector('.arr').value=st.arr||''; s.row.querySelector('.dep').value=st.dep||''; s._recalc();});
+      saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
+    }catch(e){ saveStatus.textContent='Could not load draft'; }
   }
 
-  // ---------- Helpers ----------
+  /* ---------- Helpers ---------- */
   function num(v){const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?0:n;}
-  function tToMin(t){if(!t) return 0;const m=t.match(/^(\d{1,2}):(\d{2})$/); if(!m) return 0; const h=+m[1], mi=+m[2]; return h*60+mi;}
+  function tToMin(t){if(!t) return 0;const m=t.match(/^(\d{1,2}):(\d{2})$/);if(!m) return 0;return (+m[1])*60+(+m[2]);}
   function minToHHMM(min){min=Math.max(0,Math.round(min));return `${Math.floor(min/60)}:${String(min%60).padStart(2,'0')}`;}
-  function spanMin(a,b){let s=tToMin(a), e=tToMin(b);if(e<s) e+=1440;return e-s;}
+  function spanMin(a,b){let s=tToMin(a),e=tToMin(b);if(e<s) e+=1440;return e-s;}
   function detentionFrom(mins){const over=mins-60;if(over<=0) return 0;return Math.ceil(over/15)*15;}
 
-  // ---------- Elements ----------
-  const logDate     = document.getElementById('logDate');
-  const driverName  = document.getElementById('driverName');
-  const driverEmail = document.getElementById('driverEmail');
-  const ccEmail     = document.getElementById('ccEmail');
-  const truckNum    = document.getElementById('truckNum');
-  const startMiles  = document.getElementById('startMiles');
-  const endMiles    = document.getElementById('endMiles');
-  const startTime   = document.getElementById('startTime');
-  const endTime     = document.getElementById('endTime');
-  const rateMile    = document.getElementById('rateMile');
-  const rateHour    = document.getElementById('rateHour');
+  /* ---------- Elements ---------- */
+  const logDate=document.getElementById('logDate');
+  const driverName=document.getElementById('driverName');
+  const driverEmail=document.getElementById('driverEmail');
+  const ccEmail=document.getElementById('ccEmail');
+  const truckNum=document.getElementById('truckNum');
+  const startMiles=document.getElementById('startMiles');
+  const endMiles=document.getElementById('endMiles');
+  const startTime=document.getElementById('startTime');
+  const endTime=document.getElementById('endTime');
+  const rateMile=document.getElementById('rateMile');
+  const rateHour=document.getElementById('rateHour');
 
-  const totalMiles  = document.getElementById('totalMiles');
-  const totalTime   = document.getElementById('totalTime');
-  const totalDetention = document.getElementById('totalDetention');
-  const grossPay    = document.getElementById('grossPay');
+  const totalMiles=document.getElementById('totalMiles');
+  const totalTime=document.getElementById('totalTime');
+  const totalDetention=document.getElementById('totalDetention');
+  const grossPay=document.getElementById('grossPay');
 
-  const table       = document.getElementById('stopsTable');
-  const tbody       = table.querySelector('tbody');
-  const tfootDet    = document.getElementById('tfootDet');
-  const tfootVal    = document.getElementById('tfootVal');
+  const table=document.getElementById('stopsTable');
+  const tbody=table.querySelector('tbody');
+  const tfootDet=document.getElementById('tfootDet');
+  const tfootVal=document.getElementById('tfootVal');
 
-  // ---------- Trip totals & pay ----------
+  /* ---------- Totals & Pay ---------- */
   function calcGrossPay(){
-    const miles = num(totalMiles.value);
-    const rpm   = num(rateMile.value);
-    const hr    = num(rateHour.value);
-    const val   = num(tfootVal.textContent);
-    const pay   = (miles * rpm) + (hr * val);
-    grossPay.value = pay ? pay.toFixed(2) : '';
+    const miles=num(totalMiles.value), rpm=num(rateMile.value), hr=num(rateHour.value), val=num(tfootVal.textContent);
+    const pay=(miles*rpm)+(hr*val); grossPay.value=pay?pay.toFixed(2):'';
   }
   function recalcTripTotals(){
-    const miles=num(endMiles.value)-num(startMiles.value);
-    totalMiles.value=Math.max(0,miles);
-    totalTime.value = (startTime.value&&endTime.value) ? minToHHMM(spanMin(startTime.value,endTime.value)) : '';
-    const detTotal=stops.reduce((acc,s)=>acc+s.detentionMins,0);
-    totalDetention.value=minToHHMM(detTotal);
-    calcGrossPay();
-    scheduleSave();
+    const miles=num(endMiles.value)-num(startMiles.value); totalMiles.value=Math.max(0,miles);
+    totalTime.value=(startTime.value&&endTime.value)?minToHHMM(spanMin(startTime.value,endTime.value)):'';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0); totalDetention.value=minToHHMM(detTotal);
+    calcGrossPay(); scheduleSave();
   }
   ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
-    .forEach(id=>{
-      const el=document.getElementById(id);
-      el.addEventListener('input', recalcTripTotals);
-      el.addEventListener('change', recalcTripTotals);
-    });
+    .forEach(id=>{const el=document.getElementById(id); el.addEventListener('input',recalcTripTotals); el.addEventListener('change',recalcTripTotals);});
 
-  // ---------- Stops ----------
-  let idCounter=0;
-  const stops=[];
-
+  /* ---------- Stops ---------- */
+  let idCounter=0; const stops=[];
   function addStop(initialType='Pickup'){
     idCounter++;
-    const tr=document.createElement('tr');
-    tr.dataset.id=idCounter;
+    const tr=document.createElement('tr'); tr.dataset.id=idCounter;
     tr.innerHTML=`
       <td class="idx"></td>
-      <td><select class="type">
-        <option>Pickup</option><option>Drop</option><option>Drop & Hook</option><option>Grain</option>
-      </select></td>
+      <td><select class="type"><option>Pickup</option><option>Drop</option><option>Drop & Hook</option><option>Grain</option></select></td>
       <td><input type="text" class="loc" placeholder="Location"></td>
       <td><input type="text" class="arr" placeholder="HH:MM"></td>
       <td><input type="text" class="dep" placeholder="HH:MM"></td>
@@ -304,61 +252,47 @@ document.addEventListener('DOMContentLoaded', async function(){
       <td class="det">0:00</td>
       <td class="val">0</td>
       <td><button type="button" class="btn danger small remove">Remove</button></td>`;
-    const s={id:idCounter,type:initialType,row:tr,arr:"",dep:"",durationMins:0,detentionMins:0,value:0,_recalc:null};
-    stops.push(s);
-    tbody.appendChild(tr);
+    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0,_recalc:null};
+    stops.push(s); tbody.appendChild(tr);
 
-    const sel=tr.querySelector('.type');
-    const arr=tr.querySelector('.arr');
-    const dep=tr.querySelector('.dep');
-    const loc=tr.querySelector('.loc');
-    const dur=tr.querySelector('.dur');
-    const det=tr.querySelector('.det');
-    const val=tr.querySelector('.val');
-    const btn=tr.querySelector('.remove');
+    const sel=tr.querySelector('.type'), arr=tr.querySelector('.arr'), dep=tr.querySelector('.dep'),
+          dur=tr.querySelector('.dur'), det=tr.querySelector('.det'), val=tr.querySelector('.val'),
+          loc=tr.querySelector('.loc'), btn=tr.querySelector('.remove');
 
     function recalc(){
-      s.type=sel.value;
-      s.arr=arr.value; s.dep=dep.value;
+      s.type=sel.value; s.arr=arr.value; s.dep=dep.value;
       s.durationMins=(s.arr&&s.dep)?spanMin(s.arr,s.dep):0;
-      s.detentionMins=(s.type==="Pickup"||s.type==="Drop")?detentionFrom(s.durationMins):0;
-      dur.textContent=minToHHMM(s.durationMins);
-      det.textContent=minToHHMM(s.detentionMins);
+      s.detentionMins=(s.type==='Pickup'||s.type==='Drop')?detentionFrom(s.durationMins):0;
+      dur.textContent=minToHHMM(s.durationMins); det.textContent=minToHHMM(s.detentionMins);
 
-      if(s.type==="Drop & Hook"){ s.value=0.25; }
-      else if(s.type==="Pickup"||s.type==="Drop"){
-        s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60);
-      } else { s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60); }
+      if(s.type==='Drop & Hook') s.value=0.25;
+      else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
+      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60); // Grain fallback
 
       val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
       refresh(); scheduleSave();
     }
-    s._recalc = recalc;
+    s._recalc=recalc;
 
-    sel.addEventListener('change', recalc);
-    [arr,dep,loc].forEach(el=>el.addEventListener('input', recalc));
-    btn.addEventListener('click', ()=>{
-      const i=stops.findIndex(x=>x.id===s.id); if(i>=0) stops.splice(i,1);
-      tr.remove(); refresh(); scheduleSave();
-    });
+    sel.addEventListener('change',recalc);
+    [arr,dep,loc].forEach(el=>el.addEventListener('input',recalc));
+    btn.addEventListener('click',()=>{const i=stops.findIndex(x=>x.id===s.id); if(i>=0)stops.splice(i,1); tr.remove(); refresh(); scheduleSave();});
 
-    tr.querySelector('.type').value=initialType;
-    recalc();
-    return s;
+    sel.value=initialType; recalc(); return s;
   }
 
   function refresh(){
-    let n=0;[...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx');if(idx) idx.textContent=++n;});
-    table.style.display=stops.length?"table":"none";
-    const detTotal=stops.reduce((acc,s)=>acc+s.detentionMins,0);
-    const valTotal=stops.reduce((acc,s)=>acc+s.value,0);
+    let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
+    table.style.display=stops.length?'table':'none';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0);
+    const valTotal=stops.reduce((a,s)=>a+s.value,0);
     tfootDet.textContent=minToHHMM(detTotal);
     tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
     recalcTripTotals();
   }
 
-  // Buttons
-  document.getElementById('addStop').addEventListener('click', ()=>{ addStop('Pickup'); });
+  /* ---------- Buttons ---------- */
+  document.getElementById('addStop').addEventListener('click', ()=>addStop('Pickup'));
 
   document.getElementById('exportCsv').addEventListener('click',()=>{
     const rows=[];
@@ -368,77 +302,62 @@ document.addEventListener('DOMContentLoaded', async function(){
     rows.push(["Total Miles",totalMiles.value,"Total Time",totalTime.value,"Total Detention",totalDetention.value,"Total Value",tfootVal.textContent]);
     rows.push([]);
     rows.push(["#","Type","Location","Arrive","Depart","Duration","Detention","Value"]);
-
-    let idx=0;
-    for(const s of stops){
-      idx++;
-      rows.push([idx,s.type,s.row.querySelector('.loc').value,s.arr,s.dep,minToHHMM(s.durationMins),minToHHMM(s.detentionMins),s.value]);
-    }
+    let idx=0; for(const s of stops){ idx++; rows.push([idx,s.type,s.row.querySelector('.loc').value,s.arr,s.dep,minToHHMM(s.durationMins),minToHHMM(s.detentionMins),s.value]); }
     const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download='driver_log.csv';
-    document.body.appendChild(a); a.click(); a.remove();
+    a.href=URL.createObjectURL(blob); a.download='driver_log.csv'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   });
 
-  // ---- Submit Day (PDF → Email via Apps Script) ----
+  // Submit Day → build PDF and email via Apps Script (FormData to avoid CORS preflight)
+  document.getElementById('submitPdfEmail').addEventListener('click', submitPdfEmail);
   async function submitPdfEmail(){
     const { jsPDF } = window.jspdf;
-    const rootEl = document.getElementById('logRoot');
+    const rootEl=document.getElementById('logRoot');
 
-    // Render the visible app to an image
-    const canvas = await html2canvas(rootEl, { scale: 2, useCORS: true });
-    const imgData = canvas.toDataURL('image/png');
+    // Render to image, then PDF
+    const canvas=await html2canvas(rootEl,{scale:2,useCORS:true});
+    const pdf=new jsPDF('p','pt','a4');
+    const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
+    const maxW=pageW-40, maxH=pageH-40, k=Math.min(maxW/canvas.width,maxH/canvas.height);
+    pdf.addImage(canvas.toDataURL('image/png'),'PNG',20,20,canvas.width*k,canvas.height*k);
 
-    // Build a single-page PDF (scaled to fit A4)
-    const pdf = new jsPDF('p', 'pt', 'a4');
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const maxW = pageW - 40, maxH = pageH - 40;
-    let w = canvas.width, h = canvas.height, k = Math.min(maxW/w, maxH/h);
-    pdf.addImage(imgData, 'PNG', 20, 20, w*k, h*k);
+    // to base64
+    const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
+    const pdfBase64=await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
 
-    // Blob → base64
-    const arrayBuffer = pdf.output('arraybuffer');
-    const blob = new Blob([arrayBuffer], {type:'application/pdf'});
-    const pdfBase64 = await new Promise(res=>{
-      const fr=new FileReader();
-      fr.onload=()=>res(String(fr.result).split(',')[1]);
-      fr.readAsDataURL(blob);
-    });
+    const datePart=logDate.value||new Date().toISOString().slice(0,10);
+    const filename=`driver_log_${datePart}.pdf`;
+    const subject=`Driver Daily Log – ${driverName.value||'Driver'} – ${datePart}`;
+    const body=`Driver: ${driverName.value||''}
+Truck: ${truckNum.value||''}
+Miles: ${totalMiles.value}
+Value (hrs): ${tfootVal.textContent}
+Gross Pay: $${grossPay.value}
 
-    const datePart = logDate.value || new Date().toISOString().slice(0,10);
-    const filename = `driver_log_${datePart}.pdf`;
-    const subject  = `Driver Daily Log – ${driverName.value || 'Driver'} – ${datePart}`;
-    const body     = `Driver: ${driverName.value || ''}\nTruck: ${truckNum.value || ''}\nMiles: ${totalMiles.value}\nValue (hrs): ${tfootVal.textContent}\nGross Pay: $${grossPay.value}\n\nAttached is today's Driver Daily Log.`;
+Attached is today's Driver Daily Log.`;
 
-    const toEmail = (driverEmail.value || '').trim() || ALWAYS_BCC;  // fall back so something is sent
-    const cc      = (ccEmail.value || '').trim();
+    const toEmail=(driverEmail.value||'').trim()||ALWAYS_BCC;
+    const cc=(ccEmail.value||'').trim();
 
     try{
-      const resp = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          filename, pdfBase64,
-          to: toEmail,
-          cc, bcc: ALWAYS_BCC,
-          subject, body
-        })
-      });
-      const json = await resp.json().catch(()=>({}));
-      if (resp.ok && (json.ok || json.sentTo)) {
-        alert('Submitted! PDF emailed successfully.');
-      } else {
-        alert('Could not send email: ' + (json.error || resp.statusText));
-      }
-    }catch(err){
-      alert('Network error sending email: ' + err.message);
-    }
-  }
-  document.getElementById('submitPdfEmail').addEventListener('click', submitPdfEmail);
+      const form=new FormData();
+      form.append('filename',filename);
+      form.append('pdfBase64',pdfBase64);
+      form.append('to',toEmail);
+      form.append('cc',cc);
+      form.append('bcc',ALWAYS_BCC);
+      form.append('subject',subject);
+      form.append('body',body);
 
-  // Init
+      const resp=await fetch(GAS_URL,{method:'POST',body:form});
+      const text=await resp.text(); let json; try{json=JSON.parse(text);}catch{json={ok:false,raw:text};}
+      if(resp.ok && json.ok){ alert('Submitted! PDF emailed successfully.'); }
+      else{ alert('Email failed: ' + (json.error || resp.statusText || json.raw || 'Unknown error')); }
+    }catch(err){ alert('Network error: ' + err.message); }
+  }
+
+  /* ---------- Init ---------- */
   restoreIfAny();
   recalcTripTotals();
 });
