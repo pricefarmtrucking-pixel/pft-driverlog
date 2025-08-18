@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
   /* ---------- Autosave ---------- */
-  const STORAGE_KEY = 'driverDailyLog.autosave.v7';
+  const STORAGE_KEY = 'driverDailyLog.autosave.v8';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
@@ -304,7 +304,7 @@ document.addEventListener('DOMContentLoaded', function(){
     rows.forEach((r,ri)=>{
       const tr=document.createElement('tr');
       r.forEach(c=>{
-        const cell=document.createElement(ri>=5?'td':'th'); // headers bold for first 5 rows
+        const cell=document.createElement(ri>=5?'td':'th'); // first 5 rows as header-ish
         cell.textContent=String(c); tr.appendChild(cell);
       });
       tbl.appendChild(tr);
@@ -313,7 +313,7 @@ document.addEventListener('DOMContentLoaded', function(){
   async function csvPdfBase64(){
     const rows=buildCsvRows();
     renderCsvTableForPdf(rows);
-    const canvas=await html2canvas(document.getElementById('csvPreview'), { scale:1.5, backgroundColor:'#ffffff' });
+    const canvas=await html2canvas(document.getElementById('csvPreview'), { scale: 1.3, backgroundColor:'#ffffff' });
     const img=canvas.toDataURL('image/jpeg', 0.82);
     const { jsPDF } = window.jspdf;
     const pdf=new jsPDF('p','pt','a4');
@@ -322,6 +322,18 @@ document.addEventListener('DOMContentLoaded', function(){
     pdf.addImage(img,'JPEG',20,20,canvas.width*k,canvas.height*k);
     const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
     return await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
+  }
+
+  /* ---------- Ping (reachability test) ---------- */
+  async function _pingMailer() {
+    try {
+      const r = await fetch(GAS_URL + '?ping=1', { method: 'GET' });
+      const t = await r.text(); console.log('Ping status', r.status, 'body:', t);
+      return r.ok;
+    } catch (e) {
+      console.error('Ping failed:', e);
+      return false;
+    }
   }
 
   /* ---------- Buttons ---------- */
@@ -345,14 +357,14 @@ document.addEventListener('DOMContentLoaded', function(){
   document.getElementById('submitPdfEmail').addEventListener('click', submitCsvOnlyEmail);
 
   async function submitCsvOnlyEmail(){
+    const reachable = await _pingMailer();
+    if (!reachable) { alert('Cannot reach mailer endpoint (ping failed). Check Apps Script deploy: Web app → Anyone.'); return; }
+
     try{
       let csvPdfB64 = await csvPdfBase64(); // only CSV-as-PDF
-      // simple size guard
+      // size guard (~20MB)
       const approxBytes = Math.floor((csvPdfB64.length * 3) / 4);
-      if (approxBytes > 20*1024*1024) { // ~20MB
-        alert('CSV PDF is too large. Try fewer rows.');
-        return;
-      }
+      if (approxBytes > 20*1024*1024) { alert('CSV PDF is too large. Try fewer rows.'); return; }
 
       const datePart=logDate.value||new Date().toISOString().slice(0,10);
       const csvFilename=`driver_log_${datePart}_csv.pdf`;
@@ -369,7 +381,6 @@ Attached: CSV summary as PDF.`;
       const cc=(ccEmail.value||'').trim();
 
       const form=new FormData();
-      // NOTE: we do NOT append the main 'pdfBase64' at all
       form.append('csvFilename', csvFilename);
       form.append('csvPdfBase64', csvPdfB64);
       form.append('to', toEmail);
