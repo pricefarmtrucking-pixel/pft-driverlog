@@ -38,6 +38,7 @@
   #csvPreview table{border-collapse:collapse;width:100%}
   #csvPreview th,#csvPreview td{border:1px solid #999;padding:6px;font:12px/1.3 system-ui,Arial}
   #csvPreview h2{margin:0 0 8px;font:700 16px/1.2 system-ui,Arial}
+  .grain-unload td { background:#0e141d; }
 </style>
 <!-- PDF libs -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
@@ -159,12 +160,12 @@
 document.addEventListener('DOMContentLoaded', function(){
   if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
 
-  /* === Apps Script Web App URL === */
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbytifqlMwDxvSBWrfNgO2e55_3y338VrIf6g0XeDZXBbV0DHs2K_l2I2ElWriB8sqhj/exec';
+  /* === Apps Script Web App URL (NEWEST) === */
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbww9vbI07fesck9EXleFnHYcBrKESIORkqS3hjokh-LMaKJhWxyGe7FF60BzkS-IU53/exec';
   const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
   /* ---------- Autosave ---------- */
-  const STORAGE_KEY = 'driverDailyLog.autosave.v8';
+  const STORAGE_KEY = 'driverDailyLog.autosave.v9';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
@@ -202,9 +203,9 @@ document.addEventListener('DOMContentLoaded', function(){
   const tfootDet=document.getElementById('tfootDet');
   const tfootVal=document.getElementById('tfootVal');
 
-  /* ---------- Stops ---------- */
+  /* ---------- Stops (with Grain pair support) ---------- */
   let idCounter=0;
-  const stops=[];
+  const stops=[]; // { id, type, row, arr, dep, durationMins, detentionMins, value, childRow?, arr2?, dep2?, durationMins2? }
 
   function addStop(initialType='Pickup'){
     idCounter++;
@@ -221,51 +222,139 @@ document.addEventListener('DOMContentLoaded', function(){
       <td class="det">0:00</td>
       <td class="val">0</td>
       <td><button type="button" class="btn danger small remove">Remove</button></td>`;
-    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0};
+    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0,childRow:null,arr2:'',dep2:'',durationMins2:0};
     stops.push(s); tbody.appendChild(tr);
 
+    wireRow(s);
+    tr.querySelector('.type').value=initialType;
+    if(initialType==='Grain') makeGrainPair(s);
+    s._recalc(); // initial compute
+    refresh();
+    return s;
+  }
+
+  function wireRow(s){
+    const tr=s.row;
     const sel=tr.querySelector('.type');
+    const loc=tr.querySelector('.loc');
     const arr=tr.querySelector('.arr');
     const dep=tr.querySelector('.dep');
     const dur=tr.querySelector('.dur');
     const det=tr.querySelector('.det');
     const val=tr.querySelector('.val');
-    const loc=tr.querySelector('.loc');
     const btn=tr.querySelector('.remove');
 
-    function recalc(){
-      s.type=sel.value; s.arr=arr.value; s.dep=dep.value;
-      s.durationMins=(s.arr&&s.dep)?spanMin(s.arr,s.dep):0;
-      s.detentionMins=(s.type==='Pickup'||s.type==='Drop')?detentionFrom(s.durationMins):0;
-      dur.textContent=minToHHMM(s.durationMins); det.textContent=minToHHMM(s.detentionMins);
+    function recalcSingle(){
+      s.arr=arr.value; s.dep=dep.value;
+      s.durationMins = (s.arr && s.dep) ? spanMin(s.arr,s.dep) : 0;
 
-      if(s.type==='Drop & Hook') s.value=0.25;
-      else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
-      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60); // Grain fallback
+      if(s.type==='Drop & Hook'){
+        s.detentionMins = 0;
+        s.value = 0.25;
+      } else if(s.type==='Pickup' || s.type==='Drop'){
+        s.detentionMins = detentionFrom(s.durationMins);
+        s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60);
+      } else { // safety
+        s.detentionMins = detentionFrom(s.durationMins);
+        s.value = (s.durationMins<=60) ? 1 : (1 + s.detentionMins/60);
+      }
 
-      val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
+      dur.textContent = minToHHMM(s.durationMins);
+      det.textContent = minToHHMM(s.detentionMins);
+      val.textContent = (+s.value).toFixed(2).replace(/\.00$/,'');
       refresh(); scheduleSave();
     }
 
-    sel.addEventListener('change',recalc);
-    [arr,dep,loc].forEach(el=>el.addEventListener('input',recalc));
+    function recalcGrain(){
+      // Load row
+      s.arr=arr.value; s.dep=dep.value;
+      s.durationMins = (s.arr && s.dep) ? spanMin(s.arr,s.dep) : 0;
+
+      // Unload row
+      if(s.childRow){
+        const arr2El=s.childRow.querySelector('.arr2');
+        const dep2El=s.childRow.querySelector('.dep2');
+        const dur2El=s.childRow.querySelector('.dur2');
+
+        s.arr2 = arr2El.value;
+        s.dep2 = dep2El.value;
+        s.durationMins2 = (s.arr2 && s.dep2) ? spanMin(s.arr2, s.dep2) : 0;
+        dur2El.textContent = minToHHMM(s.durationMins2);
+      }
+
+      const combined = s.durationMins + s.durationMins2;
+      const detMins = detentionFrom(combined);
+      s.detentionMins = detMins; // show on Load row only
+      s.value = (combined<=60) ? 1 : (1 + detMins/60);
+
+      dur.textContent = minToHHMM(s.durationMins);
+      det.textContent = minToHHMM(s.detentionMins);
+      val.textContent = (+s.value).toFixed(2).replace(/\.00$/,'');
+      refresh(); scheduleSave();
+    }
+
+    function onTypeChange(){
+      s.type = sel.value;
+      if(s.type==='Grain' && !s.childRow){
+        makeGrainPair(s);
+        s._recalc = recalcGrain;
+        recalcGrain();
+      } else if(s.type!=='Grain' && s.childRow){
+        s.childRow.remove(); s.childRow=null; s.arr2=''; s.dep2=''; s.durationMins2=0;
+        s._recalc = recalcSingle;
+        recalcSingle();
+      } else {
+        s._recalc();
+      }
+    }
+
+    sel.addEventListener('change', onTypeChange);
+    [arr,dep,loc].forEach(el=>el.addEventListener('input', ()=> s._recalc()));
     btn.addEventListener('click', ()=>{
+      if(s.childRow){ s.childRow.remove(); }
       const i=stops.findIndex(x=>x.id===s.id); if(i>=0) stops.splice(i,1);
       tr.remove(); refresh(); scheduleSave();
     });
 
-    sel.value=initialType;
-    recalc();
-    return s;
+    s._recalc = (s.type==='Grain') ? recalcGrain : recalcSingle;
+  }
+
+  function makeGrainPair(s){
+    const child=document.createElement('tr');
+    child.classList.add('grain-unload');
+    child.innerHTML = `
+      <td class="idx"></td>
+      <td class="muted">Grain (Unload)</td>
+      <td><input type="text" class="loc2" placeholder="Location"></td>
+      <td><input type="text" class="arr2" placeholder="HH:MM"></td>
+      <td><input type="text" class="dep2" placeholder="HH:MM"></td>
+      <td class="dur2">0:00</td>
+      <td class="det2">—</td>
+      <td class="val2">—</td>
+      <td></td>
+    `;
+    s.childRow = child;
+    s.row.after(child);
+
+    child.querySelector('.arr2').addEventListener('input', ()=> s._recalc());
+    child.querySelector('.dep2').addEventListener('input', ()=> s._recalc());
+    child.querySelector('.loc2').addEventListener('input', ()=> scheduleSave());
   }
 
   function refresh(){
-    let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
-    table.style.display=stops.length?'table':'none';
-    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0);
-    const valTotal=stops.reduce((a,s)=>a+s.value,0);
-    tfootDet.textContent=minToHHMM(detTotal);
-    tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
+    // numbering + table visibility
+    let n=0;
+    [...tbody.children].forEach(tr=>{
+      const idx=tr.querySelector('.idx');
+      if(idx) idx.textContent = ++n;
+    });
+    table.style.display = stops.length ? 'table' : 'none';
+
+    // totals
+    const detTotal = stops.reduce((acc,s)=> acc + (s.detentionMins||0), 0);
+    const valTotal = stops.reduce((acc,s)=> acc + (s.value||0), 0);
+    tfootDet.textContent = minToHHMM(detTotal);
+    tfootVal.textContent = (+valTotal).toFixed(2).replace(/\.00$/,'');
     recalcTripTotals();
   }
 
@@ -278,13 +367,13 @@ document.addEventListener('DOMContentLoaded', function(){
     const miles=num(endMiles.value)-num(startMiles.value);
     totalMiles.value=Math.max(0,miles);
     totalTime.value=(startTime.value&&endTime.value)?minToHHMM(spanMin(startTime.value,endTime.value)):'';
-    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0); totalDetention.value=minToHHMM(detTotal);
+    const detTotal=stops.reduce((a,s)=>a+(s.detentionMins||0),0); totalDetention.value=minToHHMM(detTotal);
     calcGrossPay(); scheduleSave();
   }
   ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
     .forEach(id=>{const el=document.getElementById(id); el.addEventListener('input',recalcTripTotals); el.addEventListener('change',recalcTripTotals);});
 
-  /* ---------- CSV helpers ---------- */
+  /* ---------- CSV helpers (prints Grain Load & Unload) ---------- */
   function buildCsvRows(){
     const rows=[];
     rows.push(["Date",logDate.value,"Driver Name",driverName.value,"Driver Email",driverEmail.value,"Truck #",truckNum.value]);
@@ -293,7 +382,40 @@ document.addEventListener('DOMContentLoaded', function(){
     rows.push(["Total Miles",totalMiles.value,"Total Time",totalTime.value,"Total Detention",totalDetention.value,"Total Value",tfootVal.textContent]);
     rows.push([]);
     rows.push(["#","Type","Location","Arrive","Depart","Duration","Detention","Value"]);
-    let idx=0; for(const s of stops){ idx++; rows.push([idx,s.type,s.row.querySelector('.loc').value,s.arr,s.dep,minToHHMM(s.durationMins),minToHHMM(s.detentionMins),s.value]); }
+
+    let idx=0;
+    for(const s of stops){
+      if(s.type==='Grain'){
+        idx++;
+        rows.push([
+          idx,"Grain (Load)",
+          s.row.querySelector('.loc').value||"",
+          s.arr||"", s.dep||"",
+          minToHHMM(s.durationMins||0),
+          minToHHMM(s.detentionMins||0),
+          (s.value!=null? (+s.value).toFixed(2).replace(/\.00$/,'') : "")
+        ]);
+        idx++;
+        const loc2 = s.childRow ? (s.childRow.querySelector('.loc2').value||"") : "";
+        rows.push([
+          idx,"Grain (Unload)",
+          loc2,
+          s.arr2||"", s.dep2||"",
+          minToHHMM(s.durationMins2||0),
+          "", ""
+        ]);
+      } else {
+        idx++;
+        rows.push([
+          idx,s.type,
+          s.row.querySelector('.loc').value||"",
+          s.arr||"", s.dep||"",
+          minToHHMM(s.durationMins||0),
+          minToHHMM(s.detentionMins||0),
+          (s.value!=null? (+s.value).toFixed(2).replace(/\.00$/,'') : "")
+        ]);
+      }
+    }
     return rows;
   }
   function rowsToCsv(rows){ return rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n'); }
@@ -304,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function(){
     rows.forEach((r,ri)=>{
       const tr=document.createElement('tr');
       r.forEach(c=>{
-        const cell=document.createElement(ri>=5?'td':'th'); // first 5 rows as header-ish
+        const cell=document.createElement(ri>=5?'td':'th');
         cell.textContent=String(c); tr.appendChild(cell);
       });
       tbl.appendChild(tr);
@@ -361,8 +483,7 @@ document.addEventListener('DOMContentLoaded', function(){
     if (!reachable) { alert('Cannot reach mailer endpoint (ping failed). Check Apps Script deploy: Web app → Anyone.'); return; }
 
     try{
-      let csvPdfB64 = await csvPdfBase64(); // only CSV-as-PDF
-      // size guard (~20MB)
+      const csvPdfB64 = await csvPdfBase64(); // only CSV-as-PDF
       const approxBytes = Math.floor((csvPdfB64.length * 3) / 4);
       if (approxBytes > 20*1024*1024) { alert('CSV PDF is too large. Try fewer rows.'); return; }
 
@@ -398,7 +519,7 @@ Attached: CSV summary as PDF.`;
     }
   }
 
-  /* ---------- Init ---------- */
+  /* ---------- Init (save/restore) ---------- */
   function collectState(){
     return {
       header:{
@@ -407,7 +528,13 @@ Attached: CSV summary as PDF.`;
         endMiles:endMiles.value||'',startTime:startTime.value||'',endTime:endTime.value||'',
         rateMile:rateMile.value||'',rateHour:rateHour.value||''
       },
-      stops:stops.map(s=>({type:s.type,location:s.row.querySelector('.loc').value||'',arr:s.arr||'',dep:s.dep||''}))
+      stops:stops.map(s=>({
+        type:s.type,
+        location:s.row.querySelector('.loc').value||'',
+        arr:s.arr||'', dep:s.dep||'',
+        location2: s.childRow ? (s.childRow.querySelector('.loc2').value||'') : '',
+        arr2:s.arr2||'', dep2:s.dep2||''
+      }))
     };
   }
   function restoreIfAny(){
@@ -427,8 +554,12 @@ Attached: CSV summary as PDF.`;
         s.row.querySelector('.loc').value=st.location||'';
         s.row.querySelector('.arr').value=st.arr||'';
         s.row.querySelector('.dep').value=st.dep||'';
-        // trigger calc
-        const evt=new Event('input'); s.row.querySelector('.arr').dispatchEvent(evt);
+        if (st.type==='Grain' && s.childRow){
+          s.childRow.querySelector('.loc2').value=st.location2||'';
+          s.childRow.querySelector('.arr2').value=st.arr2||'';
+          s.childRow.querySelector('.dep2').value=st.dep2||'';
+        }
+        s._recalc();
       });
       saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
     }catch(e){ saveStatus.textContent='Could not load draft'; }
