@@ -29,10 +29,16 @@
   th,td{border-top:1px solid #233142;padding:8px;text-align:left}
   th{color:#b9c7d6;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
   .right{text-align:right}
+  .inline{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   @media (max-width:720px){
     .row4,.totals,.row2,.row3{grid-template-columns:1fr}
     .status{width:100%;margin-top:6px}
   }
+  /* Hidden CSV preview area for rendering a PDF */
+  #csvPreview{position:fixed;left:-9999px;top:-9999px;background:#fff;color:#000;padding:12px;}
+  #csvPreview table{border-collapse:collapse;width:100%;}
+  #csvPreview th,#csvPreview td{border:1px solid #999;padding:6px;font:12px/1.3 system-ui, Arial;}
+  #csvPreview h2{margin:0 0 8px;font:700 16px/1.2 system-ui, Arial;}
 </style>
 <!-- PDF libs -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
@@ -124,6 +130,10 @@
     <div class="flex" style="margin-top:12px">
       <button class="btn" id="addStop" type="button">+ Add Stop</button>
       <button class="btn secondary" id="exportCsv" type="button">Export CSV</button>
+      <button class="btn secondary" id="resetAll" type="button">Reset</button>
+      <div class="inline small">
+        <label class="inline" style="gap:6px;"><input id="attachCsvPdf" type="checkbox" checked> Attach CSV as PDF</label>
+      </div>
       <button class="btn" id="submitPdfEmail" type="button" title="Create PDF and email">Submit Day (Email PDF)</button>
       <span class="status" id="saveStatus">Not saved</span>
     </div>
@@ -146,6 +156,9 @@
   </div>
 </div>
 
+<!-- Hidden CSV preview for PDF rendering -->
+<div id="csvPreview"></div>
+
 <script>
 document.addEventListener('DOMContentLoaded', async function(){
   if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
@@ -155,16 +168,44 @@ document.addEventListener('DOMContentLoaded', async function(){
   const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
   /* ---------- Autosave ---------- */
-  const STORAGE_KEY = 'driverDailyLog.autosave.v4';
+  const STORAGE_KEY = 'driverDailyLog.autosave.v5';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
   const nowStamp = () => { const d=new Date(); return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
   function scheduleSave(){ saveStatus.textContent='Saving…'; clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,350); }
-  function saveNow(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); saveStatus.textContent=`Saved ✓ at ${nowStamp()}`; }
-    catch(e){ saveStatus.textContent='Save failed'; }
-  }
+  function saveNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); saveStatus.textContent=`Saved ✓ at ${nowStamp()}`; } catch(e){ saveStatus.textContent='Save failed'; } }
+
+  /* ---------- Helpers ---------- */
+  function num(v){const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?0:n;}
+  function tToMin(t){if(!t) return 0;const m=t.match(/^(\d{1,2}):(\d{2})$/);if(!m) return 0;return (+m[1])*60+(+m[2]);}
+  function minToHHMM(min){min=Math.max(0,Math.round(min));return `${Math.floor(min/60)}:${String(min%60).padStart(2,'0')}`;}
+  function spanMin(a,b){let s=tToMin(a),e=tToMin(b);if(e<s) e+=1440;return e-s;}
+  function detentionFrom(mins){const over=mins-60;if(over<=0) return 0;return Math.ceil(over/15)*15;}
+
+  /* ---------- Elements ---------- */
+  const logDate=document.getElementById('logDate');
+  const driverName=document.getElementById('driverName');
+  const driverEmail=document.getElementById('driverEmail');
+  const ccEmail=document.getElementById('ccEmail');
+  const truckNum=document.getElementById('truckNum');
+  const startMiles=document.getElementById('startMiles');
+  const endMiles=document.getElementById('endMiles');
+  const startTime=document.getElementById('startTime');
+  const endTime=document.getElementById('endTime');
+  const rateMile=document.getElementById('rateMile');
+  const rateHour=document.getElementById('rateHour');
+  const totalMiles=document.getElementById('totalMiles');
+  const totalTime=document.getElementById('totalTime');
+  const totalDetention=document.getElementById('totalDetention');
+  const grossPay=document.getElementById('grossPay');
+  const table=document.getElementById('stopsTable');
+  const tbody=table.querySelector('tbody');
+  const tfootDet=document.getElementById('tfootDet');
+  const tfootVal=document.getElementById('tfootVal');
+  const attachCsvPdf=document.getElementById('attachCsvPdf');
+
+  /* ---------- State/Autosave ---------- */
   function collectState(){
     return {
       header:{
@@ -192,36 +233,6 @@ document.addEventListener('DOMContentLoaded', async function(){
       saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
     }catch(e){ saveStatus.textContent='Could not load draft'; }
   }
-
-  /* ---------- Helpers ---------- */
-  function num(v){const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?0:n;}
-  function tToMin(t){if(!t) return 0;const m=t.match(/^(\d{1,2}):(\d{2})$/);if(!m) return 0;return (+m[1])*60+(+m[2]);}
-  function minToHHMM(min){min=Math.max(0,Math.round(min));return `${Math.floor(min/60)}:${String(min%60).padStart(2,'0')}`;}
-  function spanMin(a,b){let s=tToMin(a),e=tToMin(b);if(e<s) e+=1440;return e-s;}
-  function detentionFrom(mins){const over=mins-60;if(over<=0) return 0;return Math.ceil(over/15)*15;}
-
-  /* ---------- Elements ---------- */
-  const logDate=document.getElementById('logDate');
-  const driverName=document.getElementById('driverName');
-  const driverEmail=document.getElementById('driverEmail');
-  const ccEmail=document.getElementById('ccEmail');
-  const truckNum=document.getElementById('truckNum');
-  const startMiles=document.getElementById('startMiles');
-  const endMiles=document.getElementById('endMiles');
-  const startTime=document.getElementById('startTime');
-  const endTime=document.getElementById('endTime');
-  const rateMile=document.getElementById('rateMile');
-  const rateHour=document.getElementById('rateHour');
-
-  const totalMiles=document.getElementById('totalMiles');
-  const totalTime=document.getElementById('totalTime');
-  const totalDetention=document.getElementById('totalDetention');
-  const grossPay=document.getElementById('grossPay');
-
-  const table=document.getElementById('stopsTable');
-  const tbody=table.querySelector('tbody');
-  const tfootDet=document.getElementById('tfootDet');
-  const tfootVal=document.getElementById('tfootVal');
 
   /* ---------- Totals & Pay ---------- */
   function calcGrossPay(){
@@ -280,7 +291,6 @@ document.addEventListener('DOMContentLoaded', async function(){
 
     sel.value=initialType; recalc(); return s;
   }
-
   function refresh(){
     let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
     table.style.display=stops.length?'table':'none';
@@ -291,10 +301,8 @@ document.addEventListener('DOMContentLoaded', async function(){
     recalcTripTotals();
   }
 
-  /* ---------- Buttons ---------- */
-  document.getElementById('addStop').addEventListener('click', ()=>addStop('Pickup'));
-
-  document.getElementById('exportCsv').addEventListener('click',()=>{
+  /* ---------- CSV helpers ---------- */
+  function buildCsvRows(){
     const rows=[];
     rows.push(["Date",logDate.value,"Driver Name",driverName.value,"Driver Email",driverEmail.value,"Truck #",truckNum.value]);
     rows.push(["Start Miles",startMiles.value,"End Miles",endMiles.value,"Start Time",startTime.value,"End Time",endTime.value]);
@@ -303,31 +311,83 @@ document.addEventListener('DOMContentLoaded', async function(){
     rows.push([]);
     rows.push(["#","Type","Location","Arrive","Depart","Duration","Detention","Value"]);
     let idx=0; for(const s of stops){ idx++; rows.push([idx,s.type,s.row.querySelector('.loc').value,s.arr,s.dep,minToHHMM(s.durationMins),minToHHMM(s.detentionMins),s.value]); }
-    const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    return rows;
+  }
+  function rowsToCsv(rows){ return rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n'); }
+  function renderCsvTableForPdf(rows){
+    const host=document.getElementById('csvPreview'); host.innerHTML='';
+    const h=document.createElement('h2'); h.textContent='Driver Daily Log — CSV Summary'; host.appendChild(h);
+    const tbl=document.createElement('table'); host.appendChild(tbl);
+    rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      r.forEach((cell, i)=>{
+        const td=document.createElement( (host.querySelector('table tr') ? 'td' : 'th') );
+        td.textContent=String(cell); tr.appendChild(td);
+      });
+      tbl.appendChild(tr);
+    });
+  }
+  async function csvPdfBase64(){
+    const rows=buildCsvRows();
+    renderCsvTableForPdf(rows);
+    const canvas=await html2canvas(document.getElementById('csvPreview'), {scale:2, backgroundColor:'#ffffff'});
+    const img=canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf=new jsPDF('p','pt','a4');
+    const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
+    const maxW=pageW-40, maxH=pageH-40, k=Math.min(maxW/canvas.width, maxH/canvas.height);
+    pdf.addImage(img,'PNG',20,20,canvas.width*k,canvas.height*k);
+    const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
+    return await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
+  }
+
+  /* ---------- Buttons ---------- */
+  document.getElementById('addStop').addEventListener('click', ()=>addStop('Pickup'));
+
+  document.getElementById('exportCsv').addEventListener('click',()=>{
+    const csv=rowsToCsv(buildCsvRows());
     const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a');
     a.href=URL.createObjectURL(blob); a.download='driver_log.csv'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   });
 
-  // Submit Day → build PDF and email via Apps Script (FormData to avoid CORS preflight)
+  document.getElementById('resetAll').addEventListener('click', ()=>{
+    if(!confirm('Reset the entire log? This will clear all fields and stops.')) return;
+    // clear inputs
+    [logDate,driverName,driverEmail,ccEmail,truckNum,startMiles,endMiles,startTime,endTime,rateMile,rateHour,totalMiles,totalTime,totalDetention,grossPay]
+      .forEach(el=>el.value='');
+    // clear stops
+    stops.length=0; while(tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    refresh();
+    // clear autosave
+    localStorage.removeItem(STORAGE_KEY);
+    saveStatus.textContent='Reset done';
+  });
+
+  // Submit Day → build PDF(s) and email via Apps Script (FormData)
   document.getElementById('submitPdfEmail').addEventListener('click', submitPdfEmail);
   async function submitPdfEmail(){
     const { jsPDF } = window.jspdf;
     const rootEl=document.getElementById('logRoot');
 
-    // Render to image, then PDF
+    // Render page PDF
     const canvas=await html2canvas(rootEl,{scale:2,useCORS:true});
     const pdf=new jsPDF('p','pt','a4');
     const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
     const maxW=pageW-40, maxH=pageH-40, k=Math.min(maxW/canvas.width,maxH/canvas.height);
     pdf.addImage(canvas.toDataURL('image/png'),'PNG',20,20,canvas.width*k,canvas.height*k);
-
-    // to base64
     const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
-    const pdfBase64=await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
+    const pagePdfBase64=await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
+
+    // Optionally make CSV-as-PDF
+    let csvPdfB64 = '';
+    if (attachCsvPdf.checked) {
+      csvPdfB64 = await csvPdfBase64();
+    }
 
     const datePart=logDate.value||new Date().toISOString().slice(0,10);
     const filename=`driver_log_${datePart}.pdf`;
+    const csvFilename=`driver_log_${datePart}_csv.pdf`;
     const subject=`Driver Daily Log – ${driverName.value||'Driver'} – ${datePart}`;
     const body=`Driver: ${driverName.value||''}
 Truck: ${truckNum.value||''}
@@ -335,7 +395,7 @@ Miles: ${totalMiles.value}
 Value (hrs): ${tfootVal.textContent}
 Gross Pay: $${grossPay.value}
 
-Attached is today's Driver Daily Log.`;
+Attached is today's Driver Daily Log.${attachCsvPdf.checked ? " Includes CSV summary as PDF." : ""}`;
 
     const toEmail=(driverEmail.value||'').trim()||ALWAYS_BCC;
     const cc=(ccEmail.value||'').trim();
@@ -343,7 +403,11 @@ Attached is today's Driver Daily Log.`;
     try{
       const form=new FormData();
       form.append('filename',filename);
-      form.append('pdfBase64',pdfBase64);
+      form.append('pdfBase64',pagePdfBase64);
+      if (csvPdfB64) {
+        form.append('csvFilename', csvFilename);
+        form.append('csvPdfBase64', csvPdfB64);
+      }
       form.append('to',toEmail);
       form.append('cc',cc);
       form.append('bcc',ALWAYS_BCC);
@@ -358,6 +422,52 @@ Attached is today's Driver Daily Log.`;
   }
 
   /* ---------- Init ---------- */
+  function refresh(){
+    let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
+    table.style.display=stops.length?'table':'none';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0);
+    const valTotal=stops.reduce((a,s)=>a+s.value,0);
+    tfootDet.textContent=minToHHMM(detTotal);
+    tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
+    recalcTripTotals();
+  }
+  let idCounter=0; const stops=[];
+  function addStop(initialType='Pickup'){
+    idCounter++;
+    const tr=document.createElement('tr'); tr.dataset.id=idCounter;
+    tr.innerHTML=`
+      <td class="idx"></td>
+      <td><select class="type"><option>Pickup</option><option>Drop</option><option>Drop & Hook</option><option>Grain</option></select></td>
+      <td><input type="text" class="loc" placeholder="Location"></td>
+      <td><input type="text" class="arr" placeholder="HH:MM"></td>
+      <td><input type="text" class="dep" placeholder="HH:MM"></td>
+      <td class="dur">0:00</td>
+      <td class="det">0:00</td>
+      <td class="val">0</td>
+      <td><button type="button" class="btn danger small remove">Remove</button></td>`;
+    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0,_recalc:null};
+    stops.push(s); tbody.appendChild(tr);
+    const sel=tr.querySelector('.type'), arr=tr.querySelector('.arr'), dep=tr.querySelector('.dep'),
+          dur=tr.querySelector('.dur'), det=tr.querySelector('.det'), val=tr.querySelector('.val'),
+          loc=tr.querySelector('.loc'), btn=tr.querySelector('.remove');
+    function recalc(){
+      s.type=sel.value; s.arr=arr.value; s.dep=dep.value;
+      s.durationMins=(s.arr&&s.dep)?spanMin(s.arr,s.dep):0;
+      s.detentionMins=(s.type==='Pickup'||s.type==='Drop')?detentionFrom(s.durationMins):0;
+      dur.textContent=minToHHMM(s.durationMins); det.textContent=minToHHMM(s.detentionMins);
+      if(s.type==='Drop & Hook') s.value=0.25;
+      else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
+      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
+      val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
+      refresh(); scheduleSave();
+    }
+    s._recalc=recalc;
+    sel.addEventListener('change',recalc);
+    [arr,dep,loc].forEach(el=>el.addEventListener('input',recalc));
+    btn.addEventListener('click',()=>{const i=stops.findIndex(x=>x.id===s.id); if(i>=0)stops.splice(i,1); tr.remove(); refresh(); scheduleSave();});
+    sel.value=initialType; recalc(); return s;
+  }
+
   restoreIfAny();
   recalcTripTotals();
 });
