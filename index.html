@@ -34,7 +34,7 @@
     .row4,.totals,.row2,.row3{grid-template-columns:1fr}
     .status{width:100%;margin-top:6px}
   }
-  /* Hidden CSV preview area for rendering a PDF */
+  /* hidden CSV preview for PDF */
   #csvPreview{position:fixed;left:-9999px;top:-9999px;background:#fff;color:#000;padding:12px;}
   #csvPreview table{border-collapse:collapse;width:100%;}
   #csvPreview th,#csvPreview td{border:1px solid #999;padding:6px;font:12px/1.3 system-ui, Arial;}
@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', async function(){
   const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
 
   /* ---------- Autosave ---------- */
-  const STORAGE_KEY = 'driverDailyLog.autosave.v5';
+  const STORAGE_KEY = 'driverDailyLog.autosave.v6';
   const saveStatus = document.getElementById('saveStatus');
   let saveTimer = null;
   const p2 = n => String(n).padStart(2,'0');
@@ -195,61 +195,22 @@ document.addEventListener('DOMContentLoaded', async function(){
   const endTime=document.getElementById('endTime');
   const rateMile=document.getElementById('rateMile');
   const rateHour=document.getElementById('rateHour');
+
   const totalMiles=document.getElementById('totalMiles');
   const totalTime=document.getElementById('totalTime');
   const totalDetention=document.getElementById('totalDetention');
   const grossPay=document.getElementById('grossPay');
+
   const table=document.getElementById('stopsTable');
   const tbody=table.querySelector('tbody');
   const tfootDet=document.getElementById('tfootDet');
   const tfootVal=document.getElementById('tfootVal');
   const attachCsvPdf=document.getElementById('attachCsvPdf');
 
-  /* ---------- State/Autosave ---------- */
-  function collectState(){
-    return {
-      header:{
-        logDate:logDate.value||'',driverName:driverName.value||'',driverEmail:driverEmail.value||'',
-        ccEmail:ccEmail.value||'',truckNum:truckNum.value||'',startMiles:startMiles.value||'',
-        endMiles:endMiles.value||'',startTime:startTime.value||'',endTime:endTime.value||'',
-        rateMile:rateMile.value||'',rateHour:rateHour.value||''
-      },
-      stops:stops.map(s=>({type:s.type,location:s.row.querySelector('.loc').value||'',arr:s.arr||'',dep:s.dep||''}))
-    };
-  }
-  function restoreIfAny(){
-    const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
-    try{
-      const d=JSON.parse(raw);
-      if(d.header){
-        logDate.value=d.header.logDate||''; driverName.value=d.header.driverName||'';
-        driverEmail.value=d.header.driverEmail||''; ccEmail.value=d.header.ccEmail||'';
-        truckNum.value=d.header.truckNum||''; startMiles.value=d.header.startMiles||'';
-        endMiles.value=d.header.endMiles||''; startTime.value=d.header.startTime||'';
-        endTime.value=d.header.endTime||''; rateMile.value=d.header.rateMile||'';
-        rateHour.value=d.header.rateHour||'';
-      }
-      (d.stops||[]).forEach(st=>{const s=addStop(st.type||'Pickup'); s.row.querySelector('.loc').value=st.location||''; s.row.querySelector('.arr').value=st.arr||''; s.row.querySelector('.dep').value=st.dep||''; s._recalc();});
-      saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
-    }catch(e){ saveStatus.textContent='Could not load draft'; }
-  }
+  /* ---------- Stops (single definition!) ---------- */
+  let idCounter=0;
+  const stops=[];
 
-  /* ---------- Totals & Pay ---------- */
-  function calcGrossPay(){
-    const miles=num(totalMiles.value), rpm=num(rateMile.value), hr=num(rateHour.value), val=num(tfootVal.textContent);
-    const pay=(miles*rpm)+(hr*val); grossPay.value=pay?pay.toFixed(2):'';
-  }
-  function recalcTripTotals(){
-    const miles=num(endMiles.value)-num(startMiles.value); totalMiles.value=Math.max(0,miles);
-    totalTime.value=(startTime.value&&endTime.value)?minToHHMM(spanMin(startTime.value,endTime.value)):'';
-    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0); totalDetention.value=minToHHMM(detTotal);
-    calcGrossPay(); scheduleSave();
-  }
-  ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
-    .forEach(id=>{const el=document.getElementById(id); el.addEventListener('input',recalcTripTotals); el.addEventListener('change',recalcTripTotals);});
-
-  /* ---------- Stops ---------- */
-  let idCounter=0; const stops=[];
   function addStop(initialType='Pickup'){
     idCounter++;
     const tr=document.createElement('tr'); tr.dataset.id=idCounter;
@@ -278,7 +239,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
       if(s.type==='Drop & Hook') s.value=0.25;
       else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
-      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60); // Grain fallback
+      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
 
       val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
       refresh(); scheduleSave();
@@ -291,6 +252,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
     sel.value=initialType; recalc(); return s;
   }
+
   function refresh(){
     let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
     table.style.display=stops.length?'table':'none';
@@ -300,6 +262,21 @@ document.addEventListener('DOMContentLoaded', async function(){
     tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
     recalcTripTotals();
   }
+
+  /* ---------- Totals & Pay ---------- */
+  function calcGrossPay(){
+    const miles=num(totalMiles.value), rpm=num(rateMile.value), hr=num(rateHour.value), val=num(tfootVal.textContent);
+    const pay=(miles*rpm)+(hr*val); grossPay.value=pay?pay.toFixed(2):'';
+  }
+  function recalcTripTotals(){
+    const miles=num(endMiles.value)-num(startMiles.value);
+    totalMiles.value=Math.max(0,miles);
+    totalTime.value=(startTime.value&&endTime.value)?minToHHMM(spanMin(startTime.value,endTime.value)):'';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0); totalDetention.value=minToHHMM(detTotal);
+    calcGrossPay(); scheduleSave();
+  }
+  ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
+    .forEach(id=>{const el=document.getElementById(id); el.addEventListener('input',recalcTripTotals); el.addEventListener('change',recalcTripTotals);});
 
   /* ---------- CSV helpers ---------- */
   function buildCsvRows(){
@@ -318,11 +295,11 @@ document.addEventListener('DOMContentLoaded', async function(){
     const host=document.getElementById('csvPreview'); host.innerHTML='';
     const h=document.createElement('h2'); h.textContent='Driver Daily Log — CSV Summary'; host.appendChild(h);
     const tbl=document.createElement('table'); host.appendChild(tbl);
-    rows.forEach(r=>{
+    rows.forEach((r,ri)=>{
       const tr=document.createElement('tr');
-      r.forEach((cell, i)=>{
-        const td=document.createElement( (host.querySelector('table tr') ? 'td' : 'th') );
-        td.textContent=String(cell); tr.appendChild(td);
+      r.forEach(c=>{
+        const cell=document.createElement(ri>=5?'td':'th'); // first header rows bold
+        cell.textContent=String(c); tr.appendChild(cell);
       });
       tbl.appendChild(tr);
     });
@@ -353,24 +330,18 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   document.getElementById('resetAll').addEventListener('click', ()=>{
     if(!confirm('Reset the entire log? This will clear all fields and stops.')) return;
-    // clear inputs
     [logDate,driverName,driverEmail,ccEmail,truckNum,startMiles,endMiles,startTime,endTime,rateMile,rateHour,totalMiles,totalTime,totalDetention,grossPay]
       .forEach(el=>el.value='');
-    // clear stops
     stops.length=0; while(tbody.firstChild) tbody.removeChild(tbody.firstChild);
-    refresh();
-    // clear autosave
-    localStorage.removeItem(STORAGE_KEY);
-    saveStatus.textContent='Reset done';
+    refresh(); localStorage.removeItem(STORAGE_KEY); saveStatus.textContent='Reset done';
   });
 
-  // Submit Day → build PDF(s) and email via Apps Script (FormData)
   document.getElementById('submitPdfEmail').addEventListener('click', submitPdfEmail);
   async function submitPdfEmail(){
     const { jsPDF } = window.jspdf;
     const rootEl=document.getElementById('logRoot');
 
-    // Render page PDF
+    // Page PDF
     const canvas=await html2canvas(rootEl,{scale:2,useCORS:true});
     const pdf=new jsPDF('p','pt','a4');
     const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
@@ -379,11 +350,9 @@ document.addEventListener('DOMContentLoaded', async function(){
     const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
     const pagePdfBase64=await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
 
-    // Optionally make CSV-as-PDF
+    // Optional CSV PDF
     let csvPdfB64 = '';
-    if (attachCsvPdf.checked) {
-      csvPdfB64 = await csvPdfBase64();
-    }
+    if (attachCsvPdf.checked) csvPdfB64 = await csvPdfBase64();
 
     const datePart=logDate.value||new Date().toISOString().slice(0,10);
     const filename=`driver_log_${datePart}.pdf`;
@@ -404,15 +373,9 @@ Attached is today's Driver Daily Log.${attachCsvPdf.checked ? " Includes CSV sum
       const form=new FormData();
       form.append('filename',filename);
       form.append('pdfBase64',pagePdfBase64);
-      if (csvPdfB64) {
-        form.append('csvFilename', csvFilename);
-        form.append('csvPdfBase64', csvPdfB64);
-      }
-      form.append('to',toEmail);
-      form.append('cc',cc);
-      form.append('bcc',ALWAYS_BCC);
-      form.append('subject',subject);
-      form.append('body',body);
+      if (csvPdfB64) { form.append('csvFilename', csvFilename); form.append('csvPdfBase64', csvPdfB64); }
+      form.append('to',toEmail); form.append('cc',cc); form.append('bcc',ALWAYS_BCC);
+      form.append('subject',subject); form.append('body',body);
 
       const resp=await fetch(GAS_URL,{method:'POST',body:form});
       const text=await resp.text(); let json; try{json=JSON.parse(text);}catch{json={ok:false,raw:text};}
@@ -422,54 +385,36 @@ Attached is today's Driver Daily Log.${attachCsvPdf.checked ? " Includes CSV sum
   }
 
   /* ---------- Init ---------- */
-  function refresh(){
-    let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
-    table.style.display=stops.length?'table':'none';
-    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0);
-    const valTotal=stops.reduce((a,s)=>a+s.value,0);
-    tfootDet.textContent=minToHHMM(detTotal);
-    tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
-    recalcTripTotals();
+  function collectState(){
+    return {
+      header:{
+        logDate:logDate.value||'',driverName:driverName.value||'',driverEmail:driverEmail.value||'',
+        ccEmail:ccEmail.value||'',truckNum:truckNum.value||'',startMiles:startMiles.value||'',
+        endMiles:endMiles.value||'',startTime:startTime.value||'',endTime:endTime.value||'',
+        rateMile:rateMile.value||'',rateHour:rateHour.value||''
+      },
+      stops:stops.map(s=>({type:s.type,location:s.row.querySelector('.loc').value||'',arr:s.arr||'',dep:s.dep||''}))
+    };
   }
-  let idCounter=0; const stops=[];
-  function addStop(initialType='Pickup'){
-    idCounter++;
-    const tr=document.createElement('tr'); tr.dataset.id=idCounter;
-    tr.innerHTML=`
-      <td class="idx"></td>
-      <td><select class="type"><option>Pickup</option><option>Drop</option><option>Drop & Hook</option><option>Grain</option></select></td>
-      <td><input type="text" class="loc" placeholder="Location"></td>
-      <td><input type="text" class="arr" placeholder="HH:MM"></td>
-      <td><input type="text" class="dep" placeholder="HH:MM"></td>
-      <td class="dur">0:00</td>
-      <td class="det">0:00</td>
-      <td class="val">0</td>
-      <td><button type="button" class="btn danger small remove">Remove</button></td>`;
-    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0,_recalc:null};
-    stops.push(s); tbody.appendChild(tr);
-    const sel=tr.querySelector('.type'), arr=tr.querySelector('.arr'), dep=tr.querySelector('.dep'),
-          dur=tr.querySelector('.dur'), det=tr.querySelector('.det'), val=tr.querySelector('.val'),
-          loc=tr.querySelector('.loc'), btn=tr.querySelector('.remove');
-    function recalc(){
-      s.type=sel.value; s.arr=arr.value; s.dep=dep.value;
-      s.durationMins=(s.arr&&s.dep)?spanMin(s.arr,s.dep):0;
-      s.detentionMins=(s.type==='Pickup'||s.type==='Drop')?detentionFrom(s.durationMins):0;
-      dur.textContent=minToHHMM(s.durationMins); det.textContent=minToHHMM(s.detentionMins);
-      if(s.type==='Drop & Hook') s.value=0.25;
-      else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
-      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
-      val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
-      refresh(); scheduleSave();
-    }
-    s._recalc=recalc;
-    sel.addEventListener('change',recalc);
-    [arr,dep,loc].forEach(el=>el.addEventListener('input',recalc));
-    btn.addEventListener('click',()=>{const i=stops.findIndex(x=>x.id===s.id); if(i>=0)stops.splice(i,1); tr.remove(); refresh(); scheduleSave();});
-    sel.value=initialType; recalc(); return s;
+  function restoreIfAny(){
+    const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
+    try{
+      const d=JSON.parse(raw);
+      if(d.header){
+        logDate.value=d.header.logDate||''; driverName.value=d.header.driverName||'';
+        driverEmail.value=d.header.driverEmail||''; ccEmail.value=d.header.ccEmail||'';
+        truckNum.value=d.header.truckNum||''; startMiles.value=d.header.startMiles||'';
+        endMiles.value=d.header.endMiles||''; startTime.value=d.header.startTime||'';
+        endTime.value=d.header.endTime||''; rateMile.value=d.header.rateMile||'';
+        rateHour.value=d.header.rateHour||'';
+      }
+      (d.stops||[]).forEach(st=>{const s=addStop(st.type||'Pickup'); s.row.querySelector('.loc').value=st.location||''; s.row.querySelector('.arr').value=st.arr||''; s.row.querySelector('.dep').value=st.dep||''; s._recalc();});
+      saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
+    }catch(e){ saveStatus.textContent='Could not load draft'; }
   }
 
   restoreIfAny();
-  recalcTripTotals();
+  refresh();
 });
 </script>
 </body>
