@@ -1,230 +1,442 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Driver Daily Log</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body {
-      background:#111;
-      color:#eee;
-      font-family: Arial, sans-serif;
-      margin:0;
-      padding:20px;
-    }
-    h1 { text-align:center; }
-    label { display:block; margin-top:8px; }
-    input, select {
-      width:100%;
-      padding:6px;
-      margin-top:2px;
-      border-radius:4px;
-      border:1px solid #444;
-      background:#222;
-      color:#eee;
-    }
-    table {
-      width:100%;
-      border-collapse:collapse;
-      margin-top:15px;
-    }
-    th, td {
-      border:1px solid #444;
-      padding:6px;
-      text-align:center;
-    }
-    button {
-      margin:5px 2px;
-      padding:8px 12px;
-      border:none;
-      border-radius:4px;
-      cursor:pointer;
-    }
-    .btn-green { background:#2e8b57; color:#fff; }
-    .btn-red   { background:#b22222; color:#fff; }
-    .btn-blue  { background:#1e90ff; color:#fff; }
-    #status { margin-top:10px; font-size:0.9em; color:#6f6; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Driver Daily Log</title>
+<style>
+  :root { --bg:#0b1016; --panel:#131b24; --muted:#8291a3; --accent:#4cc38a; --danger:#ff6b6b; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#e7eef7;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px}
+  h1{font-size:24px;margin:6px 0 14px}
+  .card{background:var(--panel);border:1px solid #1e2a36;border-radius:12px;padding:14px;margin-bottom:14px}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+  input, select, button{width:100%;padding:10px;border-radius:8px;border:1px solid #263240;background:#0f1620;color:#e7eef7;font-size:15px}
+  input[readonly]{opacity:.85}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .row2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .flex{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .btn{background:var(--accent);border:0;color:#08120e;font-weight:700;cursor:pointer;padding:10px 14px;border-radius:10px}
+  .btn.secondary{background:#0f1620;color:#e7eef7;border:1px solid #2a394a}
+  .btn.danger{background:var(--danger);color:#1b0d0d}
+  .small{font-size:12px}
+  .muted{color:var(--muted)}
+  .status{margin-left:auto;font-size:12px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{border-top:1px solid #233142;padding:8px;text-align:left}
+  th{color:#b9c7d6;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .right{text-align:right}
+  @media (max-width:720px){
+    .row4,.totals,.row2,.row3{grid-template-columns:1fr}
+    .status{width:100%;margin-top:6px}
+  }
+  /* Hidden CSV preview for PDF rendering */
+  #csvPreview{position:fixed;left:-9999px;top:-9999px;background:#fff;color:#000;padding:12px}
+  #csvPreview table{border-collapse:collapse;width:100%}
+  #csvPreview th,#csvPreview td{border:1px solid #999;padding:6px;font:12px/1.3 system-ui,Arial}
+  #csvPreview h2{margin:0 0 8px;font:700 16px/1.2 system-ui,Arial}
+</style>
+<!-- PDF libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
+<div class="wrap" id="logRoot">
   <h1>Driver Daily Log</h1>
 
-  <form id="logForm">
-    <label>Date <input type="date" id="date"></label>
-    <label>Driver Name <input type="text" id="driverName" placeholder="Enter driver name"></label>
-    <label>Driver Email <input type="email" id="driverEmail" placeholder="name@example.com"></label>
-    <label>Dispatcher Email (CC) <input type="email" id="dispatcherEmail" placeholder="optional@company.com"></label>
-    <label>Truck # <input type="text" id="truck"></label>
-    <label>Start Miles <input type="number" id="startMiles"></label>
-    <label>End Miles <input type="number" id="endMiles"></label>
-    <label>Rate Per Mile ($) <input type="number" step="0.01" id="ratePerMile"></label>
-    <label>Hourly Rate ($) <input type="number" step="0.01" id="hourlyRate"></label>
-    <label>Total Miles <input type="number" id="totalMiles" readonly></label>
-    <label>Total Value (hrs) <input type="number" id="totalValue" readonly></label>
-    <label>Gross Pay ($) <input type="number" id="grossPay" readonly></label>
-  </form>
+  <!-- Driver + day info -->
+  <div class="card">
+    <div class="row3">
+      <div>
+        <label>Date</label>
+        <input id="logDate" type="date">
+      </div>
+      <div>
+        <label>Driver Name</label>
+        <input id="driverName" type="text" placeholder="Enter driver name">
+      </div>
+      <div>
+        <label>Driver Email</label>
+        <input id="driverEmail" type="email" placeholder="name@example.com">
+      </div>
+    </div>
+    <div class="row2" style="margin-top:12px">
+      <div>
+        <label>Truck #</label>
+        <input id="truckNum" type="text" placeholder="Enter truck #">
+      </div>
+      <div>
+        <label>Dispatcher Email (optional CC)</label>
+        <input id="ccEmail" type="email" placeholder="optional@company.com">
+      </div>
+    </div>
+  </div>
 
-  <button id="addStop" class="btn-green">Add Stop</button>
+  <!-- Trip header -->
+  <div class="card">
+    <div class="row4">
+      <div>
+        <label>Start Miles</label>
+        <input id="startMiles" type="number" inputmode="numeric" placeholder="Start miles">
+      </div>
+      <div>
+        <label>End Miles</label>
+        <input id="endMiles" type="number" inputmode="numeric" placeholder="End miles">
+      </div>
+      <div>
+        <label>Start Time</label>
+        <input id="startTime" type="text" placeholder="HH:MM">
+      </div>
+      <div>
+        <label>End Time</label>
+        <input id="endTime" type="text" placeholder="HH:MM">
+      </div>
+    </div>
 
-  <table id="stopsTable">
-    <thead>
-      <tr>
-        <th>Type</th>
-        <th>Location</th>
-        <th>Arrive</th>
-        <th>Depart</th>
-        <th>Duration</th>
-        <th>Value</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+    <div class="row2" style="margin-top:12px">
+      <div>
+        <label>Rate Per Mile ($)</label>
+        <input id="rateMile" type="number" step="0.01" placeholder="e.g. 0.50">
+      </div>
+      <div>
+        <label>Hourly Rate ($)</label>
+        <input id="rateHour" type="number" step="0.01" placeholder="e.g. 25.00">
+      </div>
+    </div>
 
-  <button id="exportCSV" class="btn-blue">Export CSV</button>
-  <button id="resetForm" class="btn-red">Reset</button>
-  <button id="submitDay" class="btn-green">Submit Day (CSV PDF)</button>
+    <div class="totals" style="margin-top:12px">
+      <div>
+        <label>Total Miles</label>
+        <input id="totalMiles" type="text" readonly>
+      </div>
+      <div>
+        <label>Total Time (hh:mm)</label>
+        <input id="totalTime" type="text" readonly>
+      </div>
+      <div>
+        <label>Total Detention (hh:mm)</label>
+        <input id="totalDetention" type="text" readonly>
+      </div>
+      <div>
+        <label>Gross Pay ($)</label>
+        <input id="grossPay" type="text" readonly>
+      </div>
+    </div>
 
-  <div id="status"></div>
+    <div class="flex" style="margin-top:12px">
+      <button class="btn" id="addStop" type="button">+ Add Stop</button>
+      <button class="btn secondary" id="exportCsv" type="button">Export CSV</button>
+      <button class="btn secondary" id="resetAll" type="button">Reset</button>
+      <button class="btn" id="submitPdfEmail" type="button" title="Email CSV PDF only">Submit Day (CSV PDF)</button>
+      <span class="status" id="saveStatus">Not saved</span>
+    </div>
+  </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script>
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbww9vbI07fesck9EXleFnHYcBrKESIORkqS3hjokh-LMaKJhWxyGe7FF60BzkS-IU53/exec';
-    const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
+  <!-- Stops -->
+  <div class="card">
+    <table id="stopsTable" style="display:none">
+      <thead>
+        <tr>
+          <th>#</th><th>Type</th><th>Location</th><th>Arrive</th><th>Depart</th>
+          <th>Duration</th><th>Detention</th><th>Value (hrs)</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><th colspan="6" class="right">Total Detention</th><th id="tfootDet">0:00</th><th id="tfootVal">0</th><th></th></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
 
-    const form = document.getElementById('logForm');
-    const stopsTable = document.querySelector('#stopsTable tbody');
-    const statusDiv = document.getElementById('status');
+<!-- Hidden CSV preview -->
+<div id="csvPreview"></div>
 
-    // Autosave/load
-    function saveData() {
-      localStorage.setItem('driverLog', JSON.stringify(getFormData()));
-      statusDiv.textContent = 'Saved at ' + new Date().toLocaleTimeString();
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
+
+  /* === Apps Script Web App URL === */
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbytifqlMwDxvSBWrfNgO2e55_3y338VrIf6g0XeDZXBbV0DHs2K_l2I2ElWriB8sqhj/exec';
+  const ALWAYS_BCC = 'brian.price@farmersfreightco.com';
+
+  /* ---------- Autosave ---------- */
+  const STORAGE_KEY = 'driverDailyLog.autosave.v8';
+  const saveStatus = document.getElementById('saveStatus');
+  let saveTimer = null;
+  const p2 = n => String(n).padStart(2,'0');
+  const nowStamp = () => { const d=new Date(); return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+  function scheduleSave(){ saveStatus.textContent='Saving…'; clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,350); }
+  function saveNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); saveStatus.textContent=`Saved ✓ at ${nowStamp()}`; } catch(e){ saveStatus.textContent='Save failed'; } }
+
+  /* ---------- Helpers ---------- */
+  function num(v){const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?0:n;}
+  function tToMin(t){if(!t) return 0; const m=t.match(/^(\d{1,2}):(\d{2})$/); if(!m) return 0; return (+m[1])*60+(+m[2]);}
+  function minToHHMM(min){min=Math.max(0,Math.round(min)); return `${Math.floor(min/60)}:${String(min%60).padStart(2,'0')}`;}
+  function spanMin(a,b){let s=tToMin(a), e=tToMin(b); if(e<s) e+=1440; return e-s;}
+  function detentionFrom(mins){const over=mins-60; if(over<=0) return 0; return Math.ceil(over/15)*15;}
+
+  /* ---------- Elements ---------- */
+  const logDate=document.getElementById('logDate');
+  const driverName=document.getElementById('driverName');
+  const driverEmail=document.getElementById('driverEmail');
+  const ccEmail=document.getElementById('ccEmail');
+  const truckNum=document.getElementById('truckNum');
+  const startMiles=document.getElementById('startMiles');
+  const endMiles=document.getElementById('endMiles');
+  const startTime=document.getElementById('startTime');
+  const endTime=document.getElementById('endTime');
+  const rateMile=document.getElementById('rateMile');
+  const rateHour=document.getElementById('rateHour');
+
+  const totalMiles=document.getElementById('totalMiles');
+  const totalTime=document.getElementById('totalTime');
+  const totalDetention=document.getElementById('totalDetention');
+  const grossPay=document.getElementById('grossPay');
+
+  const table=document.getElementById('stopsTable');
+  const tbody=table.querySelector('tbody');
+  const tfootDet=document.getElementById('tfootDet');
+  const tfootVal=document.getElementById('tfootVal');
+
+  /* ---------- Stops ---------- */
+  let idCounter=0;
+  const stops=[];
+
+  function addStop(initialType='Pickup'){
+    idCounter++;
+    const tr=document.createElement('tr'); tr.dataset.id=idCounter;
+    tr.innerHTML=`
+      <td class="idx"></td>
+      <td><select class="type">
+        <option>Pickup</option><option>Drop</option><option>Drop & Hook</option><option>Grain</option>
+      </select></td>
+      <td><input type="text" class="loc" placeholder="Location"></td>
+      <td><input type="text" class="arr" placeholder="HH:MM"></td>
+      <td><input type="text" class="dep" placeholder="HH:MM"></td>
+      <td class="dur">0:00</td>
+      <td class="det">0:00</td>
+      <td class="val">0</td>
+      <td><button type="button" class="btn danger small remove">Remove</button></td>`;
+    const s={id:idCounter,type:initialType,row:tr,arr:'',dep:'',durationMins:0,detentionMins:0,value:0};
+    stops.push(s); tbody.appendChild(tr);
+
+    const sel=tr.querySelector('.type');
+    const arr=tr.querySelector('.arr');
+    const dep=tr.querySelector('.dep');
+    const dur=tr.querySelector('.dur');
+    const det=tr.querySelector('.det');
+    const val=tr.querySelector('.val');
+    const loc=tr.querySelector('.loc');
+    const btn=tr.querySelector('.remove');
+
+    function recalc(){
+      s.type=sel.value; s.arr=arr.value; s.dep=dep.value;
+      s.durationMins=(s.arr&&s.dep)?spanMin(s.arr,s.dep):0;
+      s.detentionMins=(s.type==='Pickup'||s.type==='Drop')?detentionFrom(s.durationMins):0;
+      dur.textContent=minToHHMM(s.durationMins); det.textContent=minToHHMM(s.detentionMins);
+
+      if(s.type==='Drop & Hook') s.value=0.25;
+      else if(s.type==='Pickup'||s.type==='Drop') s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60);
+      else s.value=(s.durationMins<=60)?1:(1+s.detentionMins/60); // Grain fallback
+
+      val.textContent=(+s.value).toFixed(2).replace(/\.00$/,'');
+      refresh(); scheduleSave();
     }
-    function loadData() {
-      const saved = localStorage.getItem('driverLog');
-      if (!saved) return;
-      const data = JSON.parse(saved);
-      Object.keys(data).forEach(k => {
-        if (form[k]) form[k].value = data[k];
+
+    sel.addEventListener('change',recalc);
+    [arr,dep,loc].forEach(el=>el.addEventListener('input',recalc));
+    btn.addEventListener('click', ()=>{
+      const i=stops.findIndex(x=>x.id===s.id); if(i>=0) stops.splice(i,1);
+      tr.remove(); refresh(); scheduleSave();
+    });
+
+    sel.value=initialType;
+    recalc();
+    return s;
+  }
+
+  function refresh(){
+    let n=0; [...tbody.children].forEach(tr=>{const idx=tr.querySelector('.idx'); if(idx) idx.textContent=++n;});
+    table.style.display=stops.length?'table':'none';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0);
+    const valTotal=stops.reduce((a,s)=>a+s.value,0);
+    tfootDet.textContent=minToHHMM(detTotal);
+    tfootVal.textContent=(+valTotal).toFixed(2).replace(/\.00$/,'');
+    recalcTripTotals();
+  }
+
+  /* ---------- Totals & Pay ---------- */
+  function calcGrossPay(){
+    const miles=num(totalMiles.value), rpm=num(rateMile.value), hr=num(rateHour.value), val=num(tfootVal.textContent);
+    const pay=(miles*rpm)+(hr*val); grossPay.value=pay?pay.toFixed(2):'';
+  }
+  function recalcTripTotals(){
+    const miles=num(endMiles.value)-num(startMiles.value);
+    totalMiles.value=Math.max(0,miles);
+    totalTime.value=(startTime.value&&endTime.value)?minToHHMM(spanMin(startTime.value,endTime.value)):'';
+    const detTotal=stops.reduce((a,s)=>a+s.detentionMins,0); totalDetention.value=minToHHMM(detTotal);
+    calcGrossPay(); scheduleSave();
+  }
+  ;['logDate','driverName','driverEmail','ccEmail','truckNum','startMiles','endMiles','startTime','endTime','rateMile','rateHour']
+    .forEach(id=>{const el=document.getElementById(id); el.addEventListener('input',recalcTripTotals); el.addEventListener('change',recalcTripTotals);});
+
+  /* ---------- CSV helpers ---------- */
+  function buildCsvRows(){
+    const rows=[];
+    rows.push(["Date",logDate.value,"Driver Name",driverName.value,"Driver Email",driverEmail.value,"Truck #",truckNum.value]);
+    rows.push(["Start Miles",startMiles.value,"End Miles",endMiles.value,"Start Time",startTime.value,"End Time",endTime.value]);
+    rows.push(["Rate/Mile",rateMile.value,"Hourly Rate",rateHour.value,"Gross Pay",grossPay.value]);
+    rows.push(["Total Miles",totalMiles.value,"Total Time",totalTime.value,"Total Detention",totalDetention.value,"Total Value",tfootVal.textContent]);
+    rows.push([]);
+    rows.push(["#","Type","Location","Arrive","Depart","Duration","Detention","Value"]);
+    let idx=0; for(const s of stops){ idx++; rows.push([idx,s.type,s.row.querySelector('.loc').value,s.arr,s.dep,minToHHMM(s.durationMins),minToHHMM(s.detentionMins),s.value]); }
+    return rows;
+  }
+  function rowsToCsv(rows){ return rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n'); }
+  function renderCsvTableForPdf(rows){
+    const host=document.getElementById('csvPreview'); host.innerHTML='';
+    const h=document.createElement('h2'); h.textContent='Driver Daily Log — CSV Summary'; host.appendChild(h);
+    const tbl=document.createElement('table'); host.appendChild(tbl);
+    rows.forEach((r,ri)=>{
+      const tr=document.createElement('tr');
+      r.forEach(c=>{
+        const cell=document.createElement(ri>=5?'td':'th'); // first 5 rows as header-ish
+        cell.textContent=String(c); tr.appendChild(cell);
       });
-    }
-
-    function getFormData() {
-      return {
-        date: document.getElementById('date').value,
-        driverName: document.getElementById('driverName').value,
-        driverEmail: document.getElementById('driverEmail').value,
-        dispatcherEmail: document.getElementById('dispatcherEmail').value,
-        truck: document.getElementById('truck').value,
-        startMiles: document.getElementById('startMiles').value,
-        endMiles: document.getElementById('endMiles').value,
-        ratePerMile: document.getElementById('ratePerMile').value,
-        hourlyRate: document.getElementById('hourlyRate').value,
-        totalMiles: document.getElementById('totalMiles').value,
-        totalValue: document.getElementById('totalValue').value,
-        grossPay: document.getElementById('grossPay').value
-      };
-    }
-
-    // Calculate totals
-    function calculateTotals() {
-      const start = parseFloat(document.getElementById('startMiles').value) || 0;
-      const end = parseFloat(document.getElementById('endMiles').value) || 0;
-      const rate = parseFloat(document.getElementById('ratePerMile').value) || 0;
-      const totalMiles = Math.max(0, end - start);
-      document.getElementById('totalMiles').value = totalMiles;
-      document.getElementById('grossPay').value = (totalMiles * rate).toFixed(2);
-    }
-
-    ['startMiles','endMiles','ratePerMile'].forEach(id=>{
-      document.getElementById(id).addEventListener('input', ()=>{ calculateTotals(); saveData(); });
+      tbl.appendChild(tr);
     });
-    form.addEventListener('input', saveData);
+  }
+  async function csvPdfBase64(){
+    const rows=buildCsvRows();
+    renderCsvTableForPdf(rows);
+    const canvas=await html2canvas(document.getElementById('csvPreview'), { scale: 1.3, backgroundColor:'#ffffff' });
+    const img=canvas.toDataURL('image/jpeg', 0.82);
+    const { jsPDF } = window.jspdf;
+    const pdf=new jsPDF('p','pt','a4');
+    const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
+    const maxW=pageW-40, maxH=pageH-40, k=Math.min(maxW/canvas.width, maxH/canvas.height);
+    pdf.addImage(img,'JPEG',20,20,canvas.width*k,canvas.height*k);
+    const ab=pdf.output('arraybuffer'); const blob=new Blob([ab],{type:'application/pdf'});
+    return await new Promise(res=>{const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob);});
+  }
 
-    // Stops
-    document.getElementById('addStop').addEventListener('click', ()=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input></td>
-        <td><input></td>
-        <td><input type="time"></td>
-        <td><input type="time"></td>
-        <td><input></td>
-        <td><input></td>
-        <td><button class="btn-red">Delete</button></td>
-      `;
-      tr.querySelector('button').onclick = ()=>tr.remove();
-      stopsTable.appendChild(tr);
-      saveData();
-    });
+  /* ---------- Ping (reachability test) ---------- */
+  async function _pingMailer() {
+    try {
+      const r = await fetch(GAS_URL + '?ping=1', { method: 'GET' });
+      const t = await r.text(); console.log('Ping status', r.status, 'body:', t);
+      return r.ok;
+    } catch (e) {
+      console.error('Ping failed:', e);
+      return false;
+    }
+  }
 
-    // CSV
-    function makeCSV() {
-      const data = getFormData();
-      let rows = [['Field','Value']];
-      Object.keys(data).forEach(k => rows.push([k,data[k]]));
-      rows.push([]);
-      rows.push(['Stops']);
-      rows.push(['Type','Location','Arrive','Depart','Duration','Value']);
-      stopsTable.querySelectorAll('tr').forEach(tr=>{
-        const vals = [...tr.querySelectorAll('input')].map(i=>i.value);
-        if (vals.length) rows.push(vals);
+  /* ---------- Buttons ---------- */
+  document.getElementById('addStop').addEventListener('click', ()=>addStop('Pickup'));
+
+  document.getElementById('exportCsv').addEventListener('click',()=>{
+    const csv=rowsToCsv(buildCsvRows());
+    const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='driver_log.csv'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  });
+
+  document.getElementById('resetAll').addEventListener('click', ()=>{
+    if(!confirm('Reset the entire log? This will clear all fields and stops.')) return;
+    [logDate,driverName,driverEmail,ccEmail,truckNum,startMiles,endMiles,startTime,endTime,rateMile,rateHour,totalMiles,totalTime,totalDetention,grossPay]
+      .forEach(el=>el.value='');
+    stops.length=0; while(tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    refresh(); localStorage.removeItem(STORAGE_KEY); saveStatus.textContent='Reset done';
+  });
+
+  document.getElementById('submitPdfEmail').addEventListener('click', submitCsvOnlyEmail);
+
+  async function submitCsvOnlyEmail(){
+    const reachable = await _pingMailer();
+    if (!reachable) { alert('Cannot reach mailer endpoint (ping failed). Check Apps Script deploy: Web app → Anyone.'); return; }
+
+    try{
+      let csvPdfB64 = await csvPdfBase64(); // only CSV-as-PDF
+      // size guard (~20MB)
+      const approxBytes = Math.floor((csvPdfB64.length * 3) / 4);
+      if (approxBytes > 20*1024*1024) { alert('CSV PDF is too large. Try fewer rows.'); return; }
+
+      const datePart=logDate.value||new Date().toISOString().slice(0,10);
+      const csvFilename=`driver_log_${datePart}_csv.pdf`;
+      const subject=`Driver Daily Log (CSV only) – ${driverName.value||'Driver'} – ${datePart}`;
+      const body=`Driver: ${driverName.value||''}
+Truck: ${truckNum.value||''}
+Miles: ${totalMiles.value}
+Value (hrs): ${tfootVal.textContent}
+Gross Pay: $${grossPay.value}
+
+Attached: CSV summary as PDF.`;
+
+      const toEmail=(driverEmail.value||'').trim()||ALWAYS_BCC;
+      const cc=(ccEmail.value||'').trim();
+
+      const form=new FormData();
+      form.append('csvFilename', csvFilename);
+      form.append('csvPdfBase64', csvPdfB64);
+      form.append('to', toEmail);
+      form.append('cc', cc);
+      form.append('bcc', ALWAYS_BCC);
+      form.append('subject', subject);
+      form.append('body', body);
+
+      const resp=await fetch(GAS_URL,{method:'POST', body:form});
+      const text=await resp.text(); let json; try{ json=JSON.parse(text); } catch { json={ ok:false, raw:text }; }
+      if (resp.ok && json.ok) alert('Submitted! CSV PDF emailed successfully.');
+      else alert('Email failed: ' + (json.error || resp.statusText || json.raw || 'Unknown error'));
+    }catch(err){
+      alert('Network error: ' + err.message);
+    }
+  }
+
+  /* ---------- Init ---------- */
+  function collectState(){
+    return {
+      header:{
+        logDate:logDate.value||'',driverName:driverName.value||'',driverEmail:driverEmail.value||'',
+        ccEmail:ccEmail.value||'',truckNum:truckNum.value||'',startMiles:startMiles.value||'',
+        endMiles:endMiles.value||'',startTime:startTime.value||'',endTime:endTime.value||'',
+        rateMile:rateMile.value||'',rateHour:rateHour.value||''
+      },
+      stops:stops.map(s=>({type:s.type,location:s.row.querySelector('.loc').value||'',arr:s.arr||'',dep:s.dep||''}))
+    };
+  }
+  function restoreIfAny(){
+    const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
+    try{
+      const d=JSON.parse(raw);
+      if(d.header){
+        logDate.value=d.header.logDate||''; driverName.value=d.header.driverName||'';
+        driverEmail.value=d.header.driverEmail||''; ccEmail.value=d.header.ccEmail||'';
+        truckNum.value=d.header.truckNum||''; startMiles.value=d.header.startMiles||'';
+        endMiles.value=d.header.endMiles||''; startTime.value=d.header.startTime||'';
+        endTime.value=d.header.endTime||''; rateMile.value=d.header.rateMile||'';
+        rateHour.value=d.header.rateHour||'';
+      }
+      (d.stops||[]).forEach(st=>{
+        const s=addStop(st.type||'Pickup');
+        s.row.querySelector('.loc').value=st.location||'';
+        s.row.querySelector('.arr').value=st.arr||'';
+        s.row.querySelector('.dep').value=st.dep||'';
+        // trigger calc
+        const evt=new Event('input'); s.row.querySelector('.arr').dispatchEvent(evt);
       });
-      return rows.map(r=>r.join(',')).join('\n');
-    }
+      saveStatus.textContent=`Draft loaded • ${nowStamp()}`;
+    }catch(e){ saveStatus.textContent='Could not load draft'; }
+  }
 
-    document.getElementById('exportCSV').addEventListener('click', ()=>{
-      const blob = new Blob([makeCSV()],{type:'text/csv'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href=url; a.download='driver_log.csv'; a.click();
-    });
-
-    // Reset
-    document.getElementById('resetForm').addEventListener('click', ()=>{
-      if (confirm("Clear all data?")) {
-        localStorage.removeItem('driverLog');
-        form.reset();
-        stopsTable.innerHTML='';
-        statusDiv.textContent='Reset.';
-      }
-    });
-
-    // Submit
-    document.getElementById('submitDay').addEventListener('click', async ()=>{
-      try {
-        const csv = makeCSV();
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        const lines = csv.split('\n');
-        let y = 10;
-        lines.forEach(line=>{
-          doc.text(line,10,y);
-          y+=7;
-          if (y>280){ doc.addPage(); y=10; }
-        });
-        const pdfBase64 = btoa(doc.output('arraybuffer').reduce((d,b)=>d+String.fromCharCode(b),''));
-
-        const fd = new FormData();
-        fd.append('to', document.getElementById('driverEmail').value);
-        fd.append('cc', document.getElementById('dispatcherEmail').value);
-        fd.append('bcc', ALWAYS_BCC);
-        fd.append('subject','Driver Daily Log');
-        fd.append('body','Attached is the Driver Daily Log.');
-        fd.append('csvFilename','driver_log.pdf');
-        fd.append('csvPdfBase64', pdfBase64);
-
-        const res = await fetch(GAS_URL,{method:'POST',body:fd});
-        const json = await res.json();
-        if (json.ok) statusDiv.textContent='E-mail sent with PDF!';
-        else statusDiv.textContent='Error: '+json.error;
-      } catch(err){
-        statusDiv.textContent='Network error: '+err;
-      }
-    });
-
-    loadData(); calculateTotals();
-  </script>
+  restoreIfAny();
+  refresh();
+});
+</script>
 </body>
 </html>
