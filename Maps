@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FarmPro.ag — Multi-Trip Rates + Deadhead + Map</title>
+  <style>
+    :root{
+      --bg:#0b1016; --panel:#121a23; --muted:#8aa0b6; --accent:#4cc38a; --line:#1e2a36; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:#e7eef7;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1220px;margin:0 auto;padding:18px}
+    h1{font-size:22px;margin:8px 0 14px}
+    .grid{display:grid;grid-template-columns: 1.25fr 1fr; gap:16px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .row{display:grid;grid-template-columns: 1fr 1fr 100px 110px 100px 120px 110px 110px 120px 40px; gap:8px;align-items:center;margin-bottom:8px}
+    .row input{width:100%;padding:7px 9px;border-radius:10px;border:1px solid #263445;background:#0f161e;color:#e7eef7}
+    .row .ro{background:#0b141c;color:#a7bdd4}
+    .row .del{background:#18222c;border:1px solid #2a394b;color:#9fb2c7;border-radius:10px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .row .del:hover{background:#1b2733}
+    label{font-size:12px;color:var(--muted)}
+    .labels{display:grid;grid-template-columns: 1fr 1fr 100px 110px 100px 120px 110px 110px 120px 40px; gap:8px;margin-bottom:6px}
+    .labels span{font-size:12px;color:var(--muted)}
+    .btnbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    button{background:var(--accent);color:#0b1016;border:0;border-radius:12px;padding:9px 12px;font-weight:600;cursor:pointer}
+    button.secondary{background:#203041;color:#cfe1f6}
+    button.warn{background:var(--danger);color:#1a0f0f}
+    #map{height:520px;border-radius:14px;border:1px solid var(--line)}
+    .totals{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;color:#e7eef7}
+    .totals div{background:#0f161e;border:1px solid var(--line);padding:10px 12px;border-radius:10px}
+    .small{font-size:12px;color:var(--muted)}
+    .api-line{display:flex;gap:8px;align-items:center}
+    .api-line input{flex:1}
+    .notice{font-size:12px;color:#c2d1e0;margin-top:6px}
+    .email-preview{background:#fff;color:#111;border-radius:10px;border:1px solid #e2e8f0;padding:12px;max-height:260px;overflow:auto}
+    .stack{display:flex;flex-direction:column;gap:10px}
+    .footer-note{font-size:12px;color:#b2c3d6;margin-top:8px}
+    .inline { color:#8cd0ff }
+    .chk{display:flex;align-items:center;gap:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FarmPro.ag — Multi-Trip Rates + Deadhead + Map</h1>
+
+    <div class="grid">
+      <div class="card">
+        <div class="stack">
+          <!-- ======= API KEY HANDLING ======= -->
+          <div class="api-line">
+            <label for="apikey" class="small">Google Maps JavaScript API Key</label>
+          </div>
+          <input id="apikey" placeholder="Paste your Google Maps API key here" />
+          <div class="notice">
+            Tip: your key is saved to <em>this browser only</em>. You can also hard-code it in the file — see <strong>CONFIG → DEFAULT_API_KEY</strong>.
+          </div>
+        </div>
+
+        <div class="labels" style="margin-top:14px">
+          <span>Origin</span>
+          <span>Destination</span>
+          <span title="Loaded miles">Miles</span>
+          <span>Rate</span>
+          <span>Quantity</span>
+          <span>Total ($)</span>
+          <span title="Deadhead from previous destination">Deadhead mi</span>
+          <span title="Total ÷ Loaded Miles">$ / mi (loaded)</span>
+          <span title="Total ÷ (Loaded + Deadhead)">$ / mi (all-in)</span>
+          <span></span>
+        </div>
+        <div id="rows"></div>
+
+        <div class="btnbar">
+          <button id="addRowBtn">+ Add Trip</button>
+          <button class="secondary" id="autoMilesBtn" title="Uses Google Directions to compute loaded miles for all rows">Auto-calc Loaded Miles</button>
+          <button class="secondary" id="deadheadBtn" title="Computes Dest[i-1] → Origin[i]">Calc Deadhead</button>
+          <button class="secondary" id="autoAllBtn" title="Auto-calc loaded miles & deadhead in order">Auto-calc All</button>
+          <button class="secondary" id="buildMapBtn">Build Map</button>
+          <button class="warn" id="clearBtn">Clear All</button>
+        </div>
+
+        <div class="totals">
+          <div><strong>Loaded Miles:</strong> <span id="tLoaded">0.0</span></div>
+          <div><strong>Deadhead Miles:</strong> <span id="tDead">0.0</span></div>
+          <div><strong>Total Miles:</strong> <span id="tAllMiles">0.0</span></div>
+          <div><strong>Grand Total ($):</strong> <span id="tGrand">0.00</span></div>
+          <div><strong>$ / mi (loaded):</strong> <span id="tPMLoaded">—</span></div>
+          <div><strong>$ / mi (all-in):</strong> <span id="tPMAll">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="chk" style="margin-bottom:8px">
+          <input id="showDeadhead" type="checkbox" checked />
+          <label for="showDeadhead" class="small">Show deadhead on map (dashed)</label>
+        </div>
+        <div id="map">Build map after adding trips</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2 style="margin:4px 0 10px">Email Builder</h2>
+      <div class="btnbar">
+        <button id="previewEmailBtn">Preview Email</button>
+        <button class="secondary" id="copyHtmlBtn">Copy Email (HTML)</button>
+        <button class="secondary" id="copyTextBtn">Copy Email (Plain Text)</button>
+      </div>
+      <div class="footer-note">Emails are branded as <strong>FarmPro.ag</strong> and include per-trip Google Maps links.</div>
+      <div id="emailPreview" class="email-preview" style="display:none"></div>
+    </div>
+  </div>
+
+  <script>
+    /**********************
+     * ===== CONFIG ===== *
+     **********************/
+    // If you want to "lock in" the key, put it here and it will auto-fill + disable the input.
+    // IMPORTANT: Any key present in client-side code is visible to users; rely on
+    // HTTP referrer + API restrictions for security.
+    const DEFAULT_API_KEY = ""; // e.g., "AIza..."; leave "" to use the input box.
+
+    const SAVE_KEY = "farmpro_maps_api_key_v1";
+
+    /**********************
+     *  Helper shorthands *
+     **********************/
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+
+    const rowsEl = document.getElementById('rows');
+    const tLoadedEl = document.getElementById('tLoaded');
+    const tDeadEl = document.getElementById('tDead');
+    const tAllMilesEl = document.getElementById('tAllMiles');
+    const tGrandEl = document.getElementById('tGrand');
+    const tPMLoadedEl = document.getElementById('tPMLoaded');
+    const tPMAllEl = document.getElementById('tPMAll');
+
+    let map, bounds, directionsService, directionsRenderers = [], deadheadPolylines = [];
+
+    function num(n){ return parseFloat(n)||0; }
+    function money(n){ return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+    function fix1(n){ return (Math.round((Number(n)||0)*10)/10).toFixed(1); }
+    function fix2(n){ return (Math.round((Number(n)||0)*100)/100).toFixed(2); }
+
+    /**********************
+     *   Row management   *
+     **********************/
+    function makeRow(data={}){
+      const row = document.createElement('div');
+      row.className='row';
+      row.innerHTML = `
+        <input placeholder="Origin" class="origin" value="${data.origin||''}">
+        <input placeholder="Destination" class="dest" value="${data.dest||''}">
+        <input type="number" step="0.1" min="0" class="miles" placeholder="0" value="${data.miles||''}">
+        <input type="number" step="0.01" min="0" class="rate" placeholder="0.00" value="${data.rate||''}">
+        <input type="number" step="0.01" min="0" class="qty" placeholder="0" value="${data.qty||''}">
+        <input type="number" step="0.01" min="0" class="total" placeholder="0.00" value="${data.total||''}">
+        <input type="number" step="0.1" min="0" class="dead" placeholder="0" value="${data.dead||''}" title="Auto-calculated from previous destination" readonly>
+        <input type="text" class="pmi" placeholder="—" value="" readonly>
+        <input type="text" class="pmAll" placeholder="—" value="" readonly>
+        <div class="del" title="Remove this row">✕</div>
+      `;
+      row.addEventListener('input', ()=> recalc());
+      row.querySelector('.del').addEventListener('click', ()=>{ row.remove(); recalc(); });
+      rowsEl.appendChild(row);
+      recalc();
+    }
+
+    function getRows(){
+      return $$('.row', rowsEl).map(r => ({
+        origin: $('.origin', r).value.trim(),
+        dest: $('.dest', r).value.trim(),
+        miles: num($('.miles', r).value),
+        rate: num($('.rate', r).value),
+        qty: num($('.qty', r).value),
+        total: num($('.total', r).value),
+        dead: num($('.dead', r).value),
+        _el: r
+      })).filter(x => x.origin || x.dest || x.miles || x.rate || x.qty || x.total || x.dead);
+    }
+
+    function recalc(){
+      // Total = Rate * Quantity (user can override; "lock" if they type in total)
+      $$('.row', rowsEl).forEach(r=>{
+        const rate = num($('.rate', r).value);
+        const qty = num($('.qty', r).value);
+        const totalField = $('.total', r);
+        if (!totalField.dataset.locked){
+          totalField.value = (rate*qty).toFixed(2);
+        }
+        totalField.addEventListener('input', ()=>{ totalField.dataset.locked = '1'; });
+      });
+
+      // Per-row $/mi metrics
+      getRows().forEach(row=>{
+        const pmi = row.miles > 0 ? (row.total / row.miles) : 0;
+        const denomAll = (row.miles + row.dead);
+        const pmAll = denomAll > 0 ? (row.total / denomAll) : 0;
+        $('.pmi', row._el).value = row.miles>0 ? money(pmi) : '—';
+        $('.pmAll', row._el).value = denomAll>0 ? money(pmAll) : '—';
+      });
+
+      // Totals
+      const rows = getRows();
+      const tLoaded = rows.reduce((s,x)=>s + (x.miles||0), 0);
+      const tDead = rows.reduce((s,x)=>s + (x.dead||0), 0);
+      const tAllMiles = tLoaded + tDead;
+      const tGrand = rows.reduce((s,x)=>s + (x.total||0), 0);
+
+      tLoadedEl.textContent = fix1(tLoaded);
+      tDeadEl.textContent = fix1(tDead);
+      tAllMilesEl.textContent = fix1(tAllMiles);
+      tGrandEl.textContent = money(tGrand);
+      tPMLoadedEl.textContent = tLoaded>0 ? money(tGrand/tLoaded) : '—';
+      tPMAllEl.textContent = tAllMiles>0 ? money(tGrand/tAllMiles) : '—';
+    }
+
+    /**********************
+     *       Map          *
+     **********************/
+    function initBaseMap(){
+      if (!map){
+        map = new google.maps.Map(document.getElementById('map'), {
+          center:{lat:41.878, lng:-93.097}, // Iowa-ish
+          zoom:6, mapTypeControl:false, streetViewControl:false, fullscreenControl:true
+        });
+      }
+      // clear
+      directionsRenderers.forEach(r=>r.setMap(null));
+      directionsRenderers = [];
+      deadheadPolylines.forEach(p=>p.setMap(null));
+      deadheadPolylines = [];
+      bounds = new google.maps.LatLngBounds();
+    }
+
+    async function buildMap(){
+      const key = await ensureGoogleLoaded();
+      if (!key) return;
+
+      initBaseMap();
+      directionsService = new google.maps.DirectionsService();
+
+      const rows = getRows();
+      for (let i=0;i<rows.length;i++){
+        const row = rows[i];
+        if (!row.origin || !row.dest) continue;
+
+        // Loaded leg
+        await new Promise(resolve=>{
+          directionsService.route({
+            origin: row.origin, destination: row.dest, travelMode: google.maps.TravelMode.DRIVING
+          }, (res, status)=>{
+            if (status==='OK' && res.routes && res.routes[0]){
+              const renderer = new google.maps.DirectionsRenderer({
+                map, suppressMarkers:false, preserveViewport:true
+              });
+              renderer.setDirections(res);
+              directionsRenderers.push(renderer);
+
+              // if miles blank, fill
+              const miles = res.routes[0].legs.reduce((s,l)=>s+(l.distance?.value||0),0)/1609.344;
+              if (!row.miles){
+                const dom = rows[i]._el;
+                $('.miles', dom).value = fix1(miles);
+              }
+              res.routes[0].legs.forEach(leg=>{ bounds.extend(leg.start_location); bounds.extend(leg.end_location); });
+            }
+            resolve();
+          });
+        });
+
+        // Deadhead (from previous dest to current origin)
+        if (i>0 && $('#showDeadhead').checked){
+          const prev = rows[i-1];
+          if (prev.dest && row.origin){
+            await new Promise(resolve=>{
+              directionsService.route({
+                origin: prev.dest, destination: row.origin, travelMode: google.maps.TravelMode.DRIVING
+              }, (res, status)=>{
+                if (status==='OK' && res.routes && res.routes[0]){
+                  const path = res.routes[0].overview_path;
+                  const poly = new google.maps.Polyline({
+                    path,
+                    strokeOpacity:0,
+                    icons: [{icon: {path:'M 0,-1 0,1', strokeOpacity:1, scale:4}, offset:'0', repeat:'20px'}]
+                  });
+                  poly.setMap(map);
+                  deadheadPolylines.push(poly);
+
+                  // fill deadhead if blank
+                  const miles = res.routes[0].legs.reduce((s,l)=>s+(l.distance?.value||0),0)/1609.344;
+                  if (!row.dead){
+                    const dom = rows[i]._el;
+                    $('.dead', dom).value = fix1(miles);
+                  }
+                  res.routes[0].legs.forEach(leg=>{ bounds.extend(leg.start_location); bounds.extend(leg.end_location); });
+                }
+                resolve();
+              });
+            });
+          }
+        }
+      }
+      if (!bounds.isEmpty()) map.fitBounds(bounds);
+      recalc();
+    }
+
+    async function autoCalcLoadedMiles(){
+      const key = await ensureGoogleLoaded();
+      if (!key) return;
+      directionsService = new google.maps.DirectionsService();
+      const rowDivs = $$('.row', rowsEl);
+      for (let i=0;i<rowDivs.length;i++){
+        const r = rowDivs[i];
+        const origin = $('.origin', r).value.trim();
+        const dest = $('.dest', r).value.trim();
+        if (!origin || !dest) continue;
+        await new Promise(res=>{
+          directionsService.route({origin, destination:dest, travelMode:google.maps.TravelMode.DRIVING}, (out, status)=>{
+            if (status==='OK' && out.routes && out.routes[0]){
+              const miles = out.routes[0].legs.reduce((s,l)=>s+(l.distance?.value||0),0)/1609.344;
+              $('.miles', r).value = fix1(miles);
+            }
+            res();
+          });
+        });
+      }
+      recalc();
+    }
+
+    async function calcDeadhead(){
+      const key = await ensureGoogleLoaded();
+      if (!key) return;
+      directionsService = new google.maps.DirectionsService();
+      const rows = getRows();
+      for (let i=1;i<rows.length;i++){
+        const prev = rows[i-1];
+        const curr = rows[i];
+        if (!prev.dest || !curr.origin) continue;
+        await new Promise(res=>{
+          directionsService.route({origin:prev.dest, destination:curr.origin, travelMode:google.maps.TravelMode.DRIVING}, (out, status)=>{
+            if (status==='OK' && out.routes && out.routes[0]){
+              const miles = out.routes[0].legs.reduce((s,l)=>s+(l.distance?.value||0),0)/1609.344;
+              const dom = rows[i]._el;
+              $('.dead', dom).value = fix1(miles);
+            }
+            res();
+          });
+        });
+      }
+      recalc();
+    }
+
+    async function autoCalcAll(){ await autoCalcLoadedMiles(); await calcDeadhead(); }
+
+    function loadGoogleMaps(key){
+      return new Promise((resolve, reject)=>{
+        const s = document.createElement('script');
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+        s.async = true; s.defer = true; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function ensureGoogleLoaded(){
+      let key = $('#apikey').value.trim();
+      if (!key && DEFAULT_API_KEY){ key = DEFAULT_API_KEY; }
+      if (!key){
+        alert('Paste your Google Maps API key first (top field).');
+        return null;
+      }
+      // Save for next time (only if not locked by DEFAULT_API_KEY)
+      try { if (!DEFAULT_API_KEY) localStorage.setItem(SAVE_KEY, key); } catch{}
+      if (!window.google || !window.google.maps){
+        try { await loadGoogleMaps(key); }
+        catch(e){ alert('Failed to load Google Maps: '+e.message); return null; }
+      }
+      return key;
+    }
+
+    /**********************
+     *   Email Builder    *
+     **********************/
+    function dirUrl(o,d){
+      if (!o || !d) return '';
+      return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(d)}&travelmode=driving`;
+    }
+    function esc(s=''){ return s.replace(/[&<>\"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m])); }
+
+    function buildEmailHtml(){
+      const rows = getRows();
+      const tLoaded = rows.reduce((s,x)=>s + (x.miles||0), 0);
+      const tDead = rows.reduce((s,x)=>s + (x.dead||0), 0);
+      const tAll = tLoaded + tDead;
+      const tGrand = rows.reduce((s,x)=>s + (x.total||0), 0);
+      const date = new Date().toLocaleDateString();
+
+      const rowsHtml = rows.map(r=>`
+        <tr>
+          <td>${esc(r.origin)}</td>
+          <td>${esc(r.dest)}</td>
+          <td align="right">${fix1(r.miles)}</td>
+          <td align="right">${money(r.rate)}</td>
+          <td align="right">${fix2(r.qty)}</td>
+          <td align="right">${money(r.total)}</td>
+          <td align="right">${fix1(r.dead)}</td>
+          <td align="right">${r.miles>0 ? money(r.total/r.miles) : '—'}</td>
+          <td align="right">${(r.miles+r.dead)>0 ? money(r.total/(r.miles+r.dead)) : '—'}</td>
+          <td><a href="${dirUrl(r.origin, r.dest)}">Route</a></td>
+        </tr>`).join('');
+
+      return `
+        <div style="font:14px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111">
+          <h2 style="margin:0 0 8px">FarmPro.ag — Rate Sheet</h2>
+          <div style="color:#555;margin-bottom:10px">${date}</div>
+          <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:1000px;border:1px solid #e2e8f0">
+            <thead>
+              <tr style="background:#f7fafc">
+                <th align="left"  style="border-bottom:1px solid #e2e8f0">Origin</th>
+                <th align="left"  style="border-bottom:1px solid #e2e8f0">Destination</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">Miles</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">Rate</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">Quantity</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">Total ($)</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">Deadhead mi</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">$ / mi (loaded)</th>
+                <th align="right" style="border-bottom:1px solid #e2e8f0">$ / mi (all-in)</th>
+                <th align="left"  style="border-bottom:1px solid #e2e8f0">Map</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot>
+              <tr style="background:#f7fafc">
+                <td colspan="2" style="border-top:1px solid #e2e8f0"><strong>Totals</strong></td>
+                <td align="right" style="border-top:1px solid #e2e8f0"><strong>${fix1(tLoaded)}</strong></td>
+                <td></td>
+                <td></td>
+                <td align="right" style="border-top:1px solid #e2e8f0"><strong>${money(tGrand)}</strong></td>
+                <td align="right" style="border-top:1px solid #e2e8f0"><strong>${fix1(tDead)}</strong></td>
+                <td align="right" style="border-top:1px solid #e2e8f0"><strong>${tLoaded>0 ? money(tGrand/tLoaded) : '—'}</strong></td>
+                <td align="right" style="border-top:1px solid #e2e8f0"><strong>${(tLoaded+tDead)>0 ? money(tGrand/(tLoaded+tDead)) : '—'}</strong></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <div style="margin-top:12px;color:#444">Deadhead is the driving distance from one trip’s destination to the next trip’s origin. “All-in” $/mi includes deadhead.</div>
+        </div>`;
+    }
+
+    function buildEmailText(){
+      const rows = getRows();
+      const tLoaded = rows.reduce((s,x)=>s + (x.miles||0), 0);
+      const tDead = rows.reduce((s,x)=>s + (x.dead||0), 0);
+      const tAll = tLoaded + tDead;
+      const tGrand = rows.reduce((s,x)=>s + (x.total||0), 0);
+      const lines = [];
+      lines.push('FarmPro.ag — Rate Sheet');
+      lines.push('');
+      lines.push('Origin | Destination | Miles | Rate | Quantity | Total($) | Deadhead | $/mi(loaded) | $/mi(all-in) | Map');
+      lines.push('-----------------------------------------------------------------------------------------------------------');
+      for (const r of rows){
+        const pmi = r.miles>0 ? (r.total/r.miles).toFixed(2) : '—';
+        const pmAll = (r.miles+r.dead)>0 ? (r.total/(r.miles+r.dead)).toFixed(2) : '—';
+        lines.push(`${r.origin} | ${r.dest} | ${fix1(r.miles)} | ${money(r.rate)} | ${fix2(r.qty)} | ${money(r.total)} | ${fix1(r.dead)} | ${pmi} | ${pmAll} | ${dirUrl(r.origin,r.dest)}`);
+      }
+      lines.push('-----------------------------------------------------------------------------------------------------------');
+      lines.push(`Totals: Loaded ${fix1(tLoaded)} mi | Deadhead ${fix1(tDead)} mi | All-in ${fix1(tAll)} mi | Grand Total $${money(tGrand)} | $/mi loaded ${tLoaded>0?(tGrand/tLoaded).toFixed(2):'—'} | $/mi all-in ${tAll>0?(tGrand/tAll).toFixed(2):'—'}`);
+      return lines.join('\n');
+    }
+
+    async function copyHtmlToClipboard(html){
+      try{
+        if (navigator.clipboard && window.ClipboardItem){
+          const data = new ClipboardItem({
+            'text/html': new Blob([html], {type:'text/html'}),
+            'text/plain': new Blob([html.replace(/<[^>]+>/g,'')], {type:'text/plain'})
+          });
+          await navigator.clipboard.write([data]);
+        }else{
+          const d = document.createElement('div');
+          d.contentEditable = true; d.style.position='fixed'; d.style.left='-9999px'; d.innerHTML = html; document.body.appendChild(d);
+          const range = document.createRange(); range.selectNodeContents(d); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+          document.execCommand('copy'); document.body.removeChild(d);
+        }
+        alert('Email HTML copied to clipboard.');
+      }catch(e){ alert('Copy failed: '+e.message); }
+    }
+    async function copyTextToClipboard(text){
+      try{ await navigator.clipboard.writeText(text); alert('Plain text copied.'); }
+      catch(e){ alert('Copy failed: '+e.message); }
+    }
+
+    /**********************
+     *  Wire up controls  *
+     **********************/
+    document.getElementById('addRowBtn').addEventListener('click', ()=> makeRow({}) );
+    document.getElementById('clearBtn').addEventListener('click', ()=>{ rowsEl.innerHTML=''; recalc(); });
+    document.getElementById('autoMilesBtn').addEventListener('click', autoCalcLoadedMiles);
+    document.getElementById('deadheadBtn').addEventListener('click', calcDeadhead);
+    document.getElementById('autoAllBtn').addEventListener('click', autoCalcAll);
+    document.getElementById('buildMapBtn').addEventListener('click', buildMap);
+    document.getElementById('previewEmailBtn').addEventListener('click', ()=>{
+      const html = buildEmailHtml();
+      const box = document.getElementById('emailPreview');
+      box.style.display='block';
+      box.innerHTML = html;
+    });
+    document.getElementById('copyHtmlBtn').addEventListener('click', ()=> copyHtmlToClipboard(buildEmailHtml()) );
+    document.getElementById('copyTextBtn').addEventListener('click', ()=> copyTextToClipboard(buildEmailText()) );
+
+    // Init: one empty row
+    makeRow({});
+
+    // Persist / lock key
+    (function initKey(){
+      const keyInput = document.getElementById('apikey');
+      if (DEFAULT_API_KEY){
+        keyInput.value = DEFAULT_API_KEY;
+        keyInput.disabled = true;
+      }else{
+        try{
+          const saved = localStorage.getItem(SAVE_KEY);
+          if (saved) keyInput.value = saved;
+        }catch{}
+      }
+    })();
+  </script>
+
+  <!--
+    HOW TO USE
+    1) Save as trips.html, open in Chrome/Edge.
+    2) Paste your Google Maps API key (or set DEFAULT_API_KEY in the file).
+    3) Add trips (in order). Click "Auto-calc All" to fill loaded + deadhead.
+    4) Build Map (dashed lines indicate deadhead). Preview/Copy email.
+
+    Notes:
+    • Total defaults to Rate × Quantity (you can override).
+    • $/mi (loaded) = Total ÷ Loaded Miles. $/mi (all-in) = Total ÷ (Loaded+Deadhead).
+    • Works 100% locally; map & mileage auto-calc require a Maps API key.
+  -->
+</body>
+</html>
