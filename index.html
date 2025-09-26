@@ -135,6 +135,14 @@
       <!-- NEW: send to Render backend -->
       <button class="btn" id="submitBackend" type="button" title="Send to Dispatch/Payroll">Submit to Dispatch</button>
       <span class="status" id="saveStatus">Not saved</span>
+      <button class="btn secondary" id="switchDriver" type="button">Switch Driver</button>
+<script>
+  document.getElementById('switchDriver').addEventListener('click', ()=>{
+    localStorage.removeItem('driverDailyLog.token');
+    alert('Driver token cleared. Reloading so you can enter/link a new token.');
+    location.reload();
+  });
+</script>
     </div>
   </div>
 
