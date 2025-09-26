@@ -132,6 +132,8 @@
       <button class="btn secondary" id="exportCsv" type="button">Export CSV</button>
       <button class="btn secondary" id="resetAll" type="button">Reset</button>
       <button class="btn" id="submitPdfEmail" type="button" title="Email CSV PDF only">Submit Day (CSV PDF)</button>
+      <!-- NEW: send to Render backend -->
+      <button class="btn" id="submitBackend" type="button" title="Send to Dispatch/Payroll">Submit to Dispatch</button>
       <span class="status" id="saveStatus">Not saved</span>
     </div>
   </div>
@@ -567,6 +569,95 @@ Attached: CSV summary as PDF.`;
 
   restoreIfAny();
   refresh();
+
+  /* ============================================================
+     NEW: Submit to Render backend for dispatch/payroll
+     ============================================================ */
+
+  // >>>> SET THIS to your Render backend URL
+  const API_BASE = 'https://YOUR-RENDER-SERVICE.onrender.com';
+
+  // Get driver token (?t=...) or prompt once, saved locally
+  const TOKEN_KEY = 'driverDailyLog.token';
+  function getDriverToken() {
+    const fromURL = new URLSearchParams(location.search).get('t');
+    if (fromURL) { localStorage.setItem(TOKEN_KEY, fromURL); return fromURL; }
+    let tok = localStorage.getItem(TOKEN_KEY);
+    if (!tok) { tok = prompt('Enter your driver token'); if (tok) localStorage.setItem(TOKEN_KEY, tok); }
+    return tok || '';
+  }
+
+  function hhmmToMinutes(hhmm) {
+    if (!hhmm) return 0;
+    const m = String(hhmm).match(/^(\d+):(\d{2})$/);
+    if (!m) return 0;
+    return (parseInt(m[1],10)*60) + parseInt(m[2],10);
+  }
+
+  async function submitToBackend() {
+    const driver_token = getDriverToken();
+    if (!driver_token) { alert('Missing driver token. Add ?t=YOUR_TOKEN to the URL or enter when prompted.'); return; }
+
+    const log_date   = document.getElementById('logDate').value;
+    const truck_unit = document.getElementById('truckNum').value;
+    const miles      = Number(document.getElementById('totalMiles').value || 0);
+    const valueHours = Number(document.getElementById('tfootVal').textContent || 0); // “Value (hrs)”
+    const detHM      = document.getElementById('totalDetention').value;
+    const detMinutes = hhmmToMinutes(detHM);
+    const notes      = (() => {
+      const name = document.getElementById('driverName').value || '';
+      const start = document.getElementById('startTime').value || '';
+      const end   = document.getElementById('endTime').value || '';
+      return `Driver:${name} Start:${start} End:${end}`;
+    })();
+
+    if (!log_date || !truck_unit) { alert('Date and Truck # are required.'); return; }
+
+    async function postWith(action) {
+      const body = {
+        driver_token,
+        log_date,
+        truck_unit,
+        miles,
+        value: valueHours,
+        detention_minutes: detMinutes,
+        notes
+      };
+      if (action) body.dup_action = action; // 'replace' | 'append' | 'new'
+
+      const res = await fetch(`${API_BASE}/api/public/submit`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    try {
+      await postWith(null);
+      alert('Submitted to Dispatch. ✅');
+    } catch (e) {
+      let info = null;
+      try { info = JSON.parse(e.message); } catch {}
+      if (info && info.duplicate) {
+        const choice = prompt(
+          `A log already exists for ${log_date} for Truck ${truck_unit}.\n` +
+          `Existing: ${info.existing.miles} mi, ${info.existing.value} hrs, ${info.existing.detention_minutes} det min.\n\n` +
+          `Type one: "replace" (overwrite), "append" (add to it), or "new" (create another row).`
+        );
+        if (!choice) return;
+        const pick = choice.toLowerCase();
+        if (!['replace','append','new'].includes(pick)) { alert('Canceled.'); return; }
+        await postWith(pick);
+        alert(`Submitted (${pick}). ✅`);
+      } else {
+        alert('Submit failed: ' + e.message);
+      }
+    }
+  }
+
+  document.getElementById('submitBackend').addEventListener('click', submitToBackend);
 });
 </script>
 </body>
