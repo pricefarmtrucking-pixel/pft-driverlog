@@ -169,6 +169,11 @@
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   if (window.__DDL_INIT__) return; window.__DDL_INIT__ = true;
+  document.getElementById('switchDriver')?.addEventListener('click', ()=>{
+  localStorage.removeItem('driverDailyLog.token');
+  alert('Driver token cleared. Reloading so you can use a new token link.');
+  location.reload();
+});
 
   /* === Apps Script Web App URL (NEWEST) === */
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbww9vbI07fesck9EXleFnHYcBrKESIORkqS3hjokh-LMaKJhWxyGe7FF60BzkS-IU53/exec';
